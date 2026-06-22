@@ -69,5 +69,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 echo "✓ Built $APP  (v$VERSION)"
-echo "  Run it:   open $APP"
+
+if [ -z "${CI:-}" ]; then
+  # Locally, relaunch the freshly-built app. Also stop the pre-rename ClaudeLog app
+  # and any previous ClaudeWatch instance so the menu bar shows the new build.
+  pkill -x ClaudeLog 2>/dev/null || true
+  pkill -x ClaudeWatch 2>/dev/null || true
+  echo "→ opening $APP"
+  open "$APP"
+else
+  echo "  Run it:   open $APP"
+fi
 echo "  Inspect:  ./$APP/Contents/MacOS/ClaudeWatch --dump"
