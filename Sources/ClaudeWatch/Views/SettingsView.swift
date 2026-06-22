@@ -43,8 +43,28 @@ private struct GeneralTab: View {
             Toggle("Automatically check for updates", isOn: $updater.automaticallyChecks)
             Text("Updates are delivered via Sparkle once a signed release is published.")
                 .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            aboutSection
         }
         .padding(20)
+    }
+
+    private var aboutSection: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 22)).foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ClaudeWatch")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Version \(UpdaterViewModel.appVersion) (\(UpdaterViewModel.buildNumber))")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let repo = URL(string: "https://github.com/adamXbot/ClaudeWatch") {
+                    Link("github.com/adamXbot/ClaudeWatch", destination: repo)
+                        .font(.caption)
+                }
+            }
+            Spacer()
+        }
     }
 }
 
