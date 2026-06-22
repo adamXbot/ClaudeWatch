@@ -3,6 +3,7 @@ import ClaudeWatchCore
 
 struct CommandRowView: View {
     let event: CommandEvent
+    var query: String = ""
     @State private var hovering = false
 
     var body: some View {
@@ -15,17 +16,17 @@ struct CommandRowView: View {
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(event.primary)
+                Text(Highlighter.attributed(event.primary, query: query))
                     .font(.system(size: 12, design: .monospaced))
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .foregroundStyle(.primary)
 
                 HStack(spacing: 6) {
-                    Text(event.projectName)
+                    Text(Highlighter.attributed(event.projectName, query: query))
                         .foregroundStyle(.secondary)
                     if let s = event.secondary, !s.isEmpty {
-                        Text("· \(s)")
+                        (Text("· ") + Text(Highlighter.attributed(s, query: query)))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }

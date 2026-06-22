@@ -8,9 +8,14 @@ enum Actions {
     /// the command. For subagent events this shows the subagent's own transcript —
     /// i.e. exactly the thread that issued the command.
     static func openInBrowser(_ event: CommandEvent) {
+        openThreadInBrowser(transcriptPath: event.transcriptPath, highlightId: event.id)
+    }
+
+    /// Render a transcript to HTML and open it in the default browser, optionally scrolled
+    /// to a specific command.
+    static func openThreadInBrowser(transcriptPath: String, highlightId: String = "") {
         guard let url = TranscriptHTMLRenderer.renderToTempFile(
-            transcriptPath: event.transcriptPath,
-            highlightId: event.id
+            transcriptPath: transcriptPath, highlightId: highlightId
         ) else {
             NSSound.beep()
             return
@@ -22,12 +27,13 @@ enum Actions {
     /// directory and running `claude --resume <sessionId>`. Subagents can't be resumed
     /// directly, so we resume their parent session (the envelope's sessionId).
     static func resumeInClaudeCode(_ event: CommandEvent) {
-        let cwd = event.cwd
-        let session = event.sessionId
-        guard !session.isEmpty else { NSSound.beep(); return }
+        resume(sessionId: event.sessionId, cwd: event.cwd)
+    }
 
+    static func resume(sessionId: String, cwd: String) {
+        guard !sessionId.isEmpty else { NSSound.beep(); return }
         let cdPart = cwd.isEmpty ? "" : "cd \(shQuote(cwd)) && "
-        let shellCommand = "\(cdPart)claude --resume \(shQuote(session))"
+        let shellCommand = "\(cdPart)claude --resume \(shQuote(sessionId))"
         let script = """
         tell application "Terminal"
             activate

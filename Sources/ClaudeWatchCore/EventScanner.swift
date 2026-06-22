@@ -35,10 +35,11 @@ public final class EventScanner {
         return parseDelta(offsets: &offsets)
     }
 
-    /// Parse everything appended since the last call. Mutates `offsets` in place.
-    /// Newly-discovered files are read from the beginning; truncated/rotated files reset.
-    public func parseDelta(offsets: inout [String: UInt64]) -> [CommandEvent] {
-        var results: [CommandEvent] = []
+    /// Stream every newly-appended, complete line since the last call, invoking `onLine`
+    /// with the line and its file path. Mutates `offsets` in place. Newly-discovered files
+    /// are read from the beginning; truncated/rotated files reset; vanished files are pruned.
+    /// `onLine` is called synchronously and must not escape.
+    public func scanDelta(offsets: inout [String: UInt64], onLine: (Substring, String) -> Void) {
         let files = discoverFiles()
         for url in files {
             let path = url.path
@@ -58,7 +59,7 @@ public final class EventScanner {
 
             let text = String(decoding: data, as: UTF8.self)
             for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-                results.append(contentsOf: TranscriptParser.events(fromLine: line, transcriptPath: path))
+                onLine(line, path)
             }
         }
 
@@ -67,6 +68,14 @@ public final class EventScanner {
         if offsets.count > files.count {
             let live = Set(files.map { $0.path })
             offsets = offsets.filter { live.contains($0.key) }
+        }
+    }
+
+    /// Parse everything appended since the last call into command events.
+    public func parseDelta(offsets: inout [String: UInt64]) -> [CommandEvent] {
+        var results: [CommandEvent] = []
+        scanDelta(offsets: &offsets) { line, path in
+            results.append(contentsOf: TranscriptParser.events(fromLine: line, transcriptPath: path))
         }
         return results
     }

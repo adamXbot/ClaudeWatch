@@ -3,14 +3,21 @@ import ClaudeWatchCore
 
 struct MenuContentView: View {
     @EnvironmentObject var store: TranscriptStore
+    var openSettings: () -> Void = {}
     @State private var searchText = ""
     @State private var hiddenKinds: Set<EventKind> = []
+    @State private var hiddenProjects: Set<String> = []
     @State private var showSubagents = true
+
+    private var availableProjects: [String] {
+        Array(Set(store.events.map(\.projectName))).sorted()
+    }
 
     private var filtered: [CommandEvent] {
         store.events.filter { event in
             if !showSubagents && event.isSubagent { return false }
             if hiddenKinds.contains(event.kind) { return false }
+            if hiddenProjects.contains(event.projectName) { return false }
             if !searchText.isEmpty {
                 let q = searchText
                 let hit = event.primary.localizedCaseInsensitiveContains(q)
@@ -25,6 +32,10 @@ struct MenuContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if !store.sessions.isEmpty {
+                Divider()
+                ActiveSessionsView(sessions: store.sessions)
+            }
             Divider()
             content
             Divider()
@@ -83,6 +94,23 @@ struct MenuContentView: View {
                     Label(kind.label, systemImage: kind.symbol)
                 }
             }
+            if !availableProjects.isEmpty {
+                Divider()
+                Menu("Projects") {
+                    Button("Show all") { hiddenProjects.removeAll() }
+                    Divider()
+                    ForEach(availableProjects, id: \.self) { project in
+                        Toggle(isOn: Binding(
+                            get: { !hiddenProjects.contains(project) },
+                            set: { on in
+                                if on { hiddenProjects.remove(project) } else { hiddenProjects.insert(project) }
+                            }
+                        )) {
+                            Text(project)
+                        }
+                    }
+                }
+            }
             Divider()
             Toggle("Pause watching", isOn: $store.isPaused)
             Button("Refresh now") { store.refresh() }
@@ -108,7 +136,7 @@ struct MenuContentView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(filtered) { event in
-                        CommandRowView(event: event)
+                        CommandRowView(event: event, query: searchText)
                         Divider().padding(.leading, 42)
                     }
                 }
@@ -140,6 +168,11 @@ struct MenuContentView: View {
             }
             .buttonStyle(.borderless)
             .help(store.isPaused ? "Resume" : "Pause")
+            Button { openSettings() } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .help("Settings — notifications & webhooks")
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)
                 .font(.system(size: 11))
