@@ -89,8 +89,9 @@ swift run ClaudeWatch --dump
 
 ## Releasing
 
-Push a `vX.Y.Z` tag and CI builds, signs, notarizes, and publishes a GitHub Release.
-See [RELEASING.md](RELEASING.md) for the required secrets.
+Push a `vX.Y.Z` tag and CI builds, signs, notarizes, and publishes a GitHub Release
+(and, once configured, a Sparkle auto-update appcast). The maintainer's signing/release
+setup notes live in a local, untracked `RELEASING.md`.
 
 ## Notes
 

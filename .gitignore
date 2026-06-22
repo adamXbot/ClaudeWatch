@@ -16,3 +16,6 @@ release-notes.md
 DerivedData/
 *.xcuserstate
 xcuserdata/
+
+# Local-only maintainer release/signing notes
+RELEASING.md
