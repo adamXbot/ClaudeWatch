@@ -27,8 +27,12 @@ public final class NotificationEngine {
 
     private let lock = NSLock()
     private var config = NotificationConfig.empty
-    private var lastFired: [UUID: Date] = [:]   // per-rule cooldown; touched only on the scan queue
-    private let cooldown: TimeInterval = 3
+    // Identity-based dedupe (touched only on the scan queue): each distinct (rule, event)
+    // fires once, so bursts of distinct events all notify, while a re-scan/refresh that
+    // re-presents the same events does not double-fire. Bounded so it can't grow forever.
+    private var fired: Set<String> = []
+    private var firedOrder: [String] = []
+    private let maxFired = 5000
     private let urlSession: URLSession
 
     public init(urlSession: URLSession = URLSession(configuration: .ephemeral)) {
@@ -45,7 +49,8 @@ public final class NotificationEngine {
 
         for event in events {
             for rule in cfg.rules where rule.matches(event: event) {
-                dispatch(rule: rule,
+                dispatch(key: "\(rule.id.uuidString)|a|\(event.id)",
+                         rule: rule,
                          title: "ClaudeWatch · \(event.projectName)",
                          body: "\(rule.name): \(event.primary)",
                          cfg: cfg)
@@ -53,7 +58,8 @@ public final class NotificationEngine {
         }
         for done in doneSessions {
             for rule in cfg.rules where rule.matchesSessionDone(project: done.projectName) {
-                dispatch(rule: rule,
+                dispatch(key: "\(rule.id.uuidString)|d|\(done.id)|\(Int(done.lastActivity.timeIntervalSince1970))",
+                         rule: rule,
                          title: "Claude is done · \(done.projectName)",
                          body: done.statusText,
                          cfg: cfg)
@@ -61,10 +67,11 @@ public final class NotificationEngine {
         }
     }
 
-    private func dispatch(rule: NotificationRule, title: String, body: String, cfg: NotificationConfig) {
-        let now = Date()
-        if let last = lastFired[rule.id], now.timeIntervalSince(last) < cooldown { return }
-        lastFired[rule.id] = now
+    private func dispatch(key: String, rule: NotificationRule, title: String, body: String, cfg: NotificationConfig) {
+        if fired.contains(key) { return }
+        fired.insert(key)
+        firedOrder.append(key)
+        if firedOrder.count > maxFired { fired.remove(firedOrder.removeFirst()) }
 
         for destination in rule.destinations {
             switch destination {

@@ -31,6 +31,13 @@ final class SessionTrackerTests: XCTestCase {
         ]
         return line(obj)
     }
+    private func userPrompt(ts: String, session: String = "s") -> Substring {
+        let obj: [String: Any] = [
+            "type": "user", "sessionId": session, "cwd": "/proj", "timestamp": ts,
+            "message": ["content": "please continue"],
+        ]
+        return line(obj)
+    }
     private func line(_ obj: [String: Any]) -> Substring {
         Substring(String(decoding: try! JSONSerialization.data(withJSONObject: obj), as: UTF8.self))
     }
@@ -74,6 +81,32 @@ final class SessionTrackerTests: XCTestCase {
         // Already idle on first observation → waiting, but NOT a working→waiting transition.
         let snap = tracker.snapshot(now: date("2026-06-22T10:01:00.000Z"))
         XCTAssertEqual(snap[0].state, .waiting)
+        XCTAssertTrue(tracker.drainDone().isEmpty)
+    }
+
+    func testStuckToolBecomesWaitingButEmitsNoDone() {
+        let tracker = SessionTracker()
+        tracker.ingest(line: assistantToolUse(id: "t1", ts: "2026-06-22T10:00:00.000Z"), path: "/p/s.jsonl")
+        _ = tracker.snapshot(now: date("2026-06-22T10:00:00.000Z"))   // working
+
+        // The tool never returns; far past the stuck threshold.
+        let snap = tracker.snapshot(now: date("2026-06-22T10:10:00.000Z"))
+        XCTAssertEqual(snap[0].state, .waiting)
+        XCTAssertTrue(snap[0].statusText.hasPrefix("stalled"))
+        XCTAssertTrue(tracker.drainDone().isEmpty, "a dead/timed-out tool must not report 'finished'")
+    }
+
+    func testUserReplyDoesNotEmitFalseDone() {
+        let tracker = SessionTracker()
+        tracker.ingest(line: assistantEndTurn(ts: "2026-06-22T10:00:00.000Z"), path: "/p/s.jsonl")
+        _ = tracker.snapshot(now: date("2026-06-22T10:00:20.000Z"))   // waiting (awaiting you)
+
+        // User replies; the next snapshot during the gap before Claude responds must NOT
+        // flip working→waiting and fire a spurious "done".
+        tracker.ingest(line: userPrompt(ts: "2026-06-22T10:00:25.000Z"), path: "/p/s.jsonl")
+        let snap = tracker.snapshot(now: date("2026-06-22T10:00:40.000Z"))
+        XCTAssertEqual(snap[0].state, .waiting)
+        XCTAssertFalse(snap[0].statusText.contains("awaiting you"), "cleared on a new user turn")
         XCTAssertTrue(tracker.drainDone().isEmpty)
     }
 }
