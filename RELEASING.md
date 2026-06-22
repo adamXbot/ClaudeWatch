@@ -62,9 +62,9 @@ spctl -a -vvv ClaudeWatch.app                  # Gatekeeper assessment
 
 ## Future: Sparkle auto-update
 
-privacycommand ships in-app auto-updates via [Sparkle](https://sparkle-project.org)
-(an EdDSA-signed `appcast.xml` hosted on GitHub Pages). ClaudeWatch doesn't bundle
-Sparkle yet. Adding it would mean: add the Sparkle SwiftPM dependency to the app
-target, generate an EdDSA key pair, embed the public key + feed URL in `Info.plist`,
-and have this workflow sign each build with `sign_update` and publish the appcast.
-That's a self-contained follow-up — say the word.
+[Sparkle](https://sparkle-project.org) provides in-app auto-updates via an
+EdDSA-signed `appcast.xml` (typically hosted on GitHub Pages). ClaudeWatch doesn't
+bundle Sparkle yet. Adding it would mean: add the Sparkle SwiftPM dependency to the
+app target, generate an EdDSA key pair, embed the public key + feed URL in
+`Info.plist`, and have this workflow sign each build with `sign_update` and publish
+the appcast. That's a self-contained follow-up — say the word.

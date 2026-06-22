@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write        # release job publishes a GitHub Release
+  contents: read         # least privilege by default; release job opts up
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -53,6 +53,8 @@ jobs:
     needs: build-test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-14
+    permissions:
+      contents: write    # only this job publishes a Release
     env:
       # Code-signing identity, e.g. "Developer ID Application: Your Name (TEAMID)"
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -77,8 +79,8 @@ jobs:
         run: |
           set -euo pipefail   # NOTE: never `set -x` here — it would leak secrets
 
-          if [ -z "${MACOS_CERTIFICATE:-}" ]; then
-            echo "::warning::No MACOS_CERTIFICATE secret — publishing an UNSIGNED build. See RELEASING.md."
+          if [ -z "${MACOS_CERTIFICATE:-}" ] || [ -z "${MACOS_SIGN_IDENTITY:-}" ]; then
+            echo "::warning::MACOS_CERTIFICATE / MACOS_SIGN_IDENTITY not set — publishing an UNSIGNED build. See RELEASING.md."
             echo "SIGNED=no" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -124,6 +126,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}     # via env — never inline ${{ }} into the script
         run: |
           set -euo pipefail
           printf '%s\n' \
@@ -133,9 +136,9 @@ jobs:
             "- SHA-256: see the \`ClaudeWatch.zip.sha256\` asset" \
             "- Verify: \`spctl -a -vvv ClaudeWatch.app\`" \
             > release-notes.md
-          gh release create "${{ github.ref_name }}" \
+          gh release create "$TAG" \
             ClaudeWatch.zip ClaudeWatch.zip.sha256 \
-            --title "ClaudeWatch ${{ github.ref_name }}" \
+            --title "ClaudeWatch $TAG" \
             --notes-file release-notes.md
 
       - name: Clean up keychain
