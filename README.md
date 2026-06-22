@@ -1,4 +1,12 @@
+<div align="center">
+
 # ClaudeWatch
+
+**See what Claude Code has been up to on your machine, and filter it down to keep track**
+
+</div>
+
+---
 
 A lightweight macOS **menu-bar app that shows the latest system-touching actions
 [Claude Code](https://claude.com/claude-code) performs on your machine** — shell
@@ -54,8 +62,6 @@ first time, or allow it under System Settings → Privacy & Security.
 
 To launch at login: System Settings → General → Login Items → **+**.
 
-Signed releases keep themselves up to date via [Sparkle](https://sparkle-project.org) —
-check manually any time from Settings → General → **Check for Updates…**.
 
 ## Build from source
 
@@ -90,11 +96,6 @@ without the UI:
 swift run ClaudeWatch --dump
 ```
 
-## Releasing
-
-Push a `vX.Y.Z` tag and CI builds, signs, notarizes, and publishes a GitHub Release
-(and, once configured, a Sparkle auto-update appcast). The maintainer's signing/release
-setup notes live in a local, untracked `RELEASING.md`.
 
 ## Notes
 
