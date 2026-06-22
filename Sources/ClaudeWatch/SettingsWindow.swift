@@ -8,7 +8,7 @@ final class SettingsWindowController {
     static let shared = SettingsWindowController()
     private var window: NSWindow?
 
-    func show(settings: SettingsStore, store: TranscriptStore, engine: NotificationEngine) {
+    func show(settings: SettingsStore, store: TranscriptStore, engine: NotificationEngine, updater: UpdaterViewModel) {
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -17,6 +17,7 @@ final class SettingsWindowController {
         let root = SettingsView(engine: engine)
             .environmentObject(settings)
             .environmentObject(store)
+            .environmentObject(updater)
         let hosting = NSHostingController(rootView: root)
         let w = NSWindow(contentViewController: hosting)
         w.title = "ClaudeWatch Settings"

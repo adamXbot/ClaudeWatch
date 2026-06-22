@@ -65,6 +65,8 @@ jobs:
       AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
       AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
       AC_API_KEY_P8: ${{ secrets.AC_API_KEY_P8 }}
+      # Sparkle EdDSA private key (PEM/base64 from generate_keys) for signing updates
+      SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,6 +100,19 @@ jobs:
           rm -f "$CERT"
 
           # --- codesign (Developer ID, hardened runtime, secure timestamp) ---
+          # Re-sign Sparkle's nested code inside-out before the app, so notarization
+          # accepts everything under our identity.
+          FW="ClaudeWatch.app/Contents/Frameworks/Sparkle.framework"
+          if [ -d "$FW" ]; then
+            for item in \
+              "$FW/Versions/B/XPCServices/Downloader.xpc" \
+              "$FW/Versions/B/XPCServices/Installer.xpc" \
+              "$FW/Versions/B/Updater.app" \
+              "$FW/Versions/B/Autoupdate" ; do
+              [ -e "$item" ] && codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$item"
+            done
+            codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "$FW"
+          fi
           codesign --force --options runtime --timestamp \
             --sign "$MACOS_SIGN_IDENTITY" ClaudeWatch.app
           codesign --verify --strict --verbose=2 ClaudeWatch.app
@@ -122,6 +137,64 @@ jobs:
           set -euo pipefail
           ditto -c -k --keepParent ClaudeWatch.app ClaudeWatch.zip
           shasum -a 256 ClaudeWatch.zip | tee ClaudeWatch.zip.sha256
+
+      - name: Sparkle appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail   # NOTE: never `set -x` here — the private key is in env
+
+          if [ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
+            echo "::notice::SPARKLE_ED_PRIVATE_KEY not set — skipping appcast (no auto-update feed). See RELEASING.md."
+            exit 0
+          fi
+          SIGN_TOOL="$(find .build -path '*sparkle/Sparkle/bin/sign_update' | head -1)"
+          if [ -z "$SIGN_TOOL" ]; then
+            echo "::warning::sign_update tool not found under .build — skipping appcast."
+            exit 0
+          fi
+
+          KEYFILE="$RUNNER_TEMP/sparkle_ed_key"
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$KEYFILE"
+          SIG_LINE="$("$SIGN_TOOL" ClaudeWatch.zip --ed-key-file "$KEYFILE")"   # sparkle:edSignature="…" length="…"
+          rm -f "$KEYFILE"
+
+          VERSION="${TAG#v}"
+          BUILD_NUMBER="$(git rev-list --count HEAD)"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/ClaudeWatch.zip"
+
+          printf '%s\n' \
+            '<?xml version="1.0" standalone="yes"?>' \
+            '<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">' \
+            '  <channel>' \
+            '    <title>ClaudeWatch</title>' \
+            '    <item>' \
+            "      <title>${VERSION}</title>" \
+            "      <sparkle:version>${BUILD_NUMBER}</sparkle:version>" \
+            "      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>" \
+            '      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>' \
+            "      <enclosure url=\"${DOWNLOAD_URL}\" ${SIG_LINE} type=\"application/octet-stream\" />" \
+            '    </item>' \
+            '  </channel>' \
+            '</rss>' \
+            > appcast.xml
+
+          # Publish appcast.xml to the gh-pages branch (served at the Info.plist SUFeedURL).
+          WORK="$RUNNER_TEMP/pages"
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$REMOTE" gh-pages >/dev/null 2>&1; then
+            git clone --depth 1 --branch gh-pages "$REMOTE" "$WORK"
+          else
+            git clone --depth 1 "$REMOTE" "$WORK"
+            git -C "$WORK" checkout --orphan gh-pages
+            git -C "$WORK" rm -rf . >/dev/null 2>&1 || true
+          fi
+          cp appcast.xml "$WORK/appcast.xml"
+          git -C "$WORK" -c user.name=ci -c user.email=ci@users.noreply.github.com add appcast.xml
+          git -C "$WORK" -c user.name=ci -c user.email=ci@users.noreply.github.com commit -m "appcast ${TAG}"
+          git -C "$WORK" push "$REMOTE" HEAD:gh-pages
+          echo "::notice::Published appcast for ${TAG} to gh-pages."
 
       - name: Publish GitHub Release
         env:

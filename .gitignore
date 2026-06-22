@@ -1,7 +1,7 @@
 # Swift / SwiftPM
 .build/
 .swiftpm/
-Package.resolved
+# Package.resolved is committed to pin the Sparkle version for reproducible CI builds.
 
 # Built artifacts
 ClaudeWatch.app/

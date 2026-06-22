@@ -14,6 +14,7 @@ struct ClaudeWatchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var store: TranscriptStore
     @StateObject private var settings: SettingsStore
+    @StateObject private var updater = UpdaterViewModel()
     private let engine = NotificationEngine()
 
     init() {
@@ -40,7 +41,7 @@ struct ClaudeWatchApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuContentView(openSettings: {
-                SettingsWindowController.shared.show(settings: settings, store: store, engine: engine)
+                SettingsWindowController.shared.show(settings: settings, store: store, engine: engine, updater: updater)
             })
                 .environmentObject(store)
                 .environmentObject(settings)

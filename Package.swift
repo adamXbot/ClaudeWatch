@@ -12,6 +12,10 @@ let package = Package(
         .library(name: "ClaudeWatchCore", targets: ["ClaudeWatchCore"]),
         .executable(name: "ClaudeWatch", targets: ["ClaudeWatch"]),
     ],
+    dependencies: [
+        // In-app auto-update. Only the app target depends on it; Core stays dependency-free.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+    ],
     targets: [
         .target(
             name: "ClaudeWatchCore",
@@ -19,7 +23,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "ClaudeWatch",
-            dependencies: ["ClaudeWatchCore"],
+            dependencies: [
+                "ClaudeWatchCore",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             path: "Sources/ClaudeWatch"
         ),
         .testTarget(

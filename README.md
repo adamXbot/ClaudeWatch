@@ -54,6 +54,9 @@ first time, or allow it under System Settings → Privacy & Security.
 
 To launch at login: System Settings → General → Login Items → **+**.
 
+Signed releases keep themselves up to date via [Sparkle](https://sparkle-project.org) —
+check manually any time from Settings → General → **Check for Updates…**.
+
 ## Build from source
 
 Requires macOS 13+ and a Swift toolchain (Xcode or Command Line Tools).

@@ -18,6 +18,7 @@ struct SettingsView: View {
 
 private struct GeneralTab: View {
     @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var updater: UpdaterViewModel
 
     var body: some View {
         Form {
@@ -31,6 +32,16 @@ private struct GeneralTab: View {
                 }
             }
             Text("Adds: Git commit, Any file write, Session done.")
+                .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            HStack {
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
+                Spacer()
+                Text("v\(UpdaterViewModel.appVersion)").font(.caption).foregroundStyle(.secondary)
+            }
+            Toggle("Automatically check for updates", isOn: $updater.automaticallyChecks)
+            Text("Updates are delivered via Sparkle once a signed release is published.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(20)
