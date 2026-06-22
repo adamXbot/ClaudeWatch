@@ -13,6 +13,11 @@ struct MenuContentView: View {
         Array(Set(store.events.map(\.projectName))).sorted()
     }
 
+    /// Active sessions, minus any projects toggled off in the filter.
+    private var visibleSessions: [SessionStatus] {
+        store.sessions.filter { !hiddenProjects.contains($0.projectName) }
+    }
+
     private var filtered: [CommandEvent] {
         store.events.filter { event in
             if !showSubagents && event.isSubagent { return false }
@@ -32,9 +37,9 @@ struct MenuContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if !store.sessions.isEmpty {
+            if !visibleSessions.isEmpty {
                 Divider()
-                ActiveSessionsView(sessions: store.sessions)
+                ActiveSessionsView(sessions: visibleSessions)
             }
             Divider()
             content
