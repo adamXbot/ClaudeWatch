@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write        # release job publishes a GitHub Release
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # let build.sh derive a version from tags/history
+
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+          echo "Developer dir: $(xcode-select -p)"
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: Test
+        run: swift test
+
+      - name: Assemble .app
+        run: ./build.sh release
+
+      - name: Zip unsigned artifact
+        run: ditto -c -k --keepParent ClaudeWatch.app ClaudeWatch-unsigned.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeWatch-app-unsigned
+          path: ClaudeWatch-unsigned.zip
+          if-no-files-found: error
+
+  release:
+    name: Sign, notarize & release
+    needs: build-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-14
+    env:
+      # Code-signing identity, e.g. "Developer ID Application: Your Name (TEAMID)"
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      KEYCHAIN_PWD: ${{ secrets.KEYCHAIN_PWD }}
+      # App Store Connect API key for notarytool (.p8 stored base64-encoded)
+      AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+      AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+      AC_API_KEY_P8: ${{ secrets.AC_API_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build & assemble app
+        env:
+          CLAUDEWATCH_VERSION: ${{ github.ref_name }}
+        run: ./build.sh release
+
+      - name: Sign & notarize
+        run: |
+          set -euo pipefail   # NOTE: never `set -x` here — it would leak secrets
+
+          if [ -z "${MACOS_CERTIFICATE:-}" ]; then
+            echo "::warning::No MACOS_CERTIFICATE secret — publishing an UNSIGNED build. See RELEASING.md."
+            echo "SIGNED=no" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # --- import the Developer ID cert into an ephemeral keychain ---
+          CERT="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          echo -n "$MACOS_CERTIFICATE" | base64 -D > "$CERT"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN"
+          security import "$CERT" -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$CERT"
+
+          # --- codesign (Developer ID, hardened runtime, secure timestamp) ---
+          codesign --force --options runtime --timestamp \
+            --sign "$MACOS_SIGN_IDENTITY" ClaudeWatch.app
+          codesign --verify --strict --verbose=2 ClaudeWatch.app
+
+          # --- notarize + staple (skipped if no API key configured) ---
+          if [ -n "${AC_API_KEY_P8:-}" ]; then
+            KEY="$RUNNER_TEMP/ac_api.p8"
+            echo -n "$AC_API_KEY_P8" | base64 -D > "$KEY"
+            ditto -c -k --keepParent ClaudeWatch.app "$RUNNER_TEMP/notarize.zip"
+            xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+              --key "$KEY" --key-id "$AC_API_KEY_ID" --issuer "$AC_API_ISSUER_ID" --wait
+            xcrun stapler staple ClaudeWatch.app
+            rm -f "$KEY"
+            echo "SIGNED=signed+notarized" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Signed but NOT notarized (no AC_API_KEY_P8 secret)."
+            echo "SIGNED=signed" >> "$GITHUB_ENV"
+          fi
+
+      - name: Package + checksum
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent ClaudeWatch.app ClaudeWatch.zip
+          shasum -a 256 ClaudeWatch.zip | tee ClaudeWatch.zip.sha256
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            "A menu-bar history of the system-touching actions Claude Code runs." \
+            "" \
+            "- Signing: **${SIGNED:-no}**" \
+            "- SHA-256: see the \`ClaudeWatch.zip.sha256\` asset" \
+            "- Verify: \`spctl -a -vvv ClaudeWatch.app\`" \
+            > release-notes.md
+          gh release create "${{ github.ref_name }}" \
+            ClaudeWatch.zip ClaudeWatch.zip.sha256 \
+            --title "ClaudeWatch ${{ github.ref_name }}" \
+            --notes-file release-notes.md
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true

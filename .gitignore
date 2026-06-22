@@ -1,0 +1,18 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Built artifacts
+ClaudeWatch.app/
+*.zip
+*.sha256
+release-notes.md
+
+# macOS
+.DS_Store
+
+# Xcode (if ever opened)
+DerivedData/
+*.xcuserstate
+xcuserdata/
