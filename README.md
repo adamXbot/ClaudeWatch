@@ -4,6 +4,14 @@
 
 **See what Claude Code has been up to on your machine, and filter it down to keep track**
 
+<p>
+  <a href="https://github.com/adamXbot/ClaudeWatch/actions/workflows/build.yml"><img alt="CI" src="https://github.com/adamXbot/ClaudeWatch/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/adamXbot/ClaudeWatch/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/adamXbot/ClaudeWatch?color=2f7df0&label=release"></a>
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white">
+  <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
+  <a href="https://sparkle-project.org"><img alt="Auto-update via Sparkle" src="https://img.shields.io/badge/auto--update-Sparkle-9b59b6"></a>
+</p>
+
 </div>
 
 ---
