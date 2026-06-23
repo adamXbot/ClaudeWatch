@@ -36,6 +36,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/ClaudeWatch"
 
+# App icon.
+if [ -f Resources/AppIcon.icns ]; then
+  cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+fi
+
 # Embed Sparkle.framework so the app can self-update.
 SPARKLE_FW="$(find .build -type d -path '*Sparkle.xcframework/macos*/Sparkle.framework' 2>/dev/null | head -1)"
 if [ -n "$SPARKLE_FW" ]; then
@@ -56,6 +61,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>        <string>ClaudeWatch</string>
     <key>CFBundleIdentifier</key>         <string>${BUNDLE_ID}</string>
     <key>CFBundleExecutable</key>         <string>ClaudeWatch</string>
+    <key>CFBundleIconFile</key>           <string>AppIcon</string>
     <key>CFBundlePackageType</key>        <string>APPL</string>
     <key>CFBundleShortVersionString</key> <string>${VERSION}</string>
     <key>CFBundleVersion</key>            <string>${BUILD_NUMBER}</string>

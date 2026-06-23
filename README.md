@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src=".github/assets/icon.png" width="120" alt="ClaudeWatch icon">
+
 # ClaudeWatch
 
 **See what Claude Code has been up to on your machine, and filter it down to keep track**
