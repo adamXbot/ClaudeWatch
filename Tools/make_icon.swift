@@ -9,7 +9,6 @@ import UniformTypeIdentifiers
 let purple = CGColor(red: 110/255, green: 86/255, blue: 207/255, alpha: 1)
 let coral  = CGColor(red: 217/255, green: 119/255, blue: 87/255, alpha: 1)
 let white  = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
-let pupil  = CGColor(red: 42/255, green: 30/255, blue: 85/255, alpha: 1)
 
 func draw(size s: CGFloat, into ctx: CGContext) {
     func p(_ fx: CGFloat, _ fy: CGFloat) -> CGPoint { CGPoint(x: fx * s, y: fy * s) }
@@ -33,14 +32,7 @@ func draw(size s: CGFloat, into ctx: CGContext) {
     right.move(to: p(0.70, 0.40)); right.addLine(to: p(0.78, 0.50)); right.addLine(to: p(0.70, 0.60))
     ctx.addPath(left); ctx.addPath(right); ctx.strokePath()
 
-    // Eye: white almond.
-    let almond = CGMutablePath()
-    almond.move(to: p(0.33, 0.50))
-    almond.addQuadCurve(to: p(0.67, 0.50), control: p(0.50, 0.41))
-    almond.addQuadCurve(to: p(0.33, 0.50), control: p(0.50, 0.59))
-    ctx.addPath(almond); ctx.setFillColor(white); ctx.fillPath()
-
-    // Coral iris.
+    // Coral disc between the brackets.
     let irisR = 0.072 * s
     ctx.setFillColor(coral)
     ctx.fillEllipse(in: CGRect(x: 0.5 * s - irisR, y: 0.5 * s - irisR, width: 2 * irisR, height: 2 * irisR))
@@ -54,10 +46,6 @@ func draw(size s: CGFloat, into ctx: CGContext) {
     spark.addQuadCurve(to: CGPoint(x: cx - R, y: cy), control: CGPoint(x: cx - w, y: cy + w))
     spark.addQuadCurve(to: CGPoint(x: cx, y: cy - R), control: CGPoint(x: cx - w, y: cy - w))
     ctx.addPath(spark); ctx.setFillColor(white); ctx.fillPath()
-    // A tiny dark glint at the very centre for depth.
-    let g = 0.012 * s
-    ctx.setFillColor(pupil)
-    ctx.fillEllipse(in: CGRect(x: cx - g, y: cy - g, width: 2 * g, height: 2 * g))
 }
 
 func render(_ px: Int, to url: URL) {
