@@ -33,7 +33,7 @@ func draw(size s: CGFloat, into ctx: CGContext) {
     ctx.addPath(left); ctx.addPath(right); ctx.strokePath()
 
     // Coral disc between the brackets.
-    let irisR = 0.072 * s
+    let irisR = 0.088 * s
     ctx.setFillColor(coral)
     ctx.fillEllipse(in: CGRect(x: 0.5 * s - irisR, y: 0.5 * s - irisR, width: 2 * irisR, height: 2 * irisR))
 
