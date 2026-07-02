@@ -52,7 +52,7 @@ struct CommandRowView: View {
                 if hovering {
                     HStack(spacing: 8) {
                         actionButton("globe", help: "View thread in browser") { Actions.openInBrowser(event) }
-                        actionButton("terminal", help: "Resume in Claude Code") { Actions.resumeInClaudeCode(event) }
+                        actionButton("terminal", help: event.source == .codex ? "Resume in Codex" : "Resume in Claude Code") { Actions.resumeInClaudeCode(event) }
                         actionButton("doc.on.doc", help: "Copy command") { Actions.copyCommand(event) }
                     }
                 }
@@ -66,7 +66,7 @@ struct CommandRowView: View {
         .onTapGesture { Actions.openInBrowser(event) }
         .contextMenu {
             Button("View thread in browser") { Actions.openInBrowser(event) }
-            Button("Resume in Claude Code") { Actions.resumeInClaudeCode(event) }
+            Button(event.source == .codex ? "Resume in Codex" : "Resume in Claude Code") { Actions.resumeInClaudeCode(event) }
             Divider()
             Button("Copy command") { Actions.copyCommand(event) }
             Button("Copy session id") { Actions.copySessionId(event) }

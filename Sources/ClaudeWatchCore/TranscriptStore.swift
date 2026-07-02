@@ -56,6 +56,7 @@ public final class TranscriptStore: ObservableObject {
     public func refresh() {
         queue.async {
             self.offsets.removeAll()
+            self.scanner.reset()
             self.seen.removeAll()
             self.accumulated.removeAll()
             self.tickBody(force: true)
@@ -74,7 +75,7 @@ public final class TranscriptStore: ObservableObject {
 
         var fresh: [CommandEvent] = []
         scanner.scanDelta(offsets: &offsets) { [tracker] line, path in
-            fresh.append(contentsOf: TranscriptParser.events(fromLine: line, transcriptPath: path))
+            fresh.append(contentsOf: scanner.events(fromLine: line, transcriptPath: path))
             tracker.ingest(line: line, path: path)
         }
 

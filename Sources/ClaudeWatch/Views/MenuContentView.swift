@@ -3,6 +3,7 @@ import ClaudeWatchCore
 
 struct MenuContentView: View {
     @EnvironmentObject var store: TranscriptStore
+    var source: TranscriptSource = .claude
     var openSettings: () -> Void = {}
     @State private var searchText = ""
     @State private var hiddenKinds: Set<EventKind> = []
@@ -55,7 +56,7 @@ struct MenuContentView: View {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(.tint)
-                Text("Claude activity")
+                Text(source.activityTitle)
                     .font(.system(size: 13, weight: .semibold))
                 if store.isPaused {
                     Text("paused").font(.system(size: 10, weight: .semibold))
@@ -164,7 +165,7 @@ struct MenuContentView: View {
             Circle()
                 .fill(store.isPaused ? Color.orange : Color.green)
                 .frame(width: 7, height: 7)
-            Text("\(filtered.count) action\(filtered.count == 1 ? "" : "s") · watching ~/.claude")
+            Text("\(filtered.count) action\(filtered.count == 1 ? "" : "s") · watching \(source.watchedPathLabel)")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
             Spacer()

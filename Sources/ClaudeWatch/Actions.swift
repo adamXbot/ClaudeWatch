@@ -27,13 +27,20 @@ enum Actions {
     /// directory and running `claude --resume <sessionId>`. Subagents can't be resumed
     /// directly, so we resume their parent session (the envelope's sessionId).
     static func resumeInClaudeCode(_ event: CommandEvent) {
-        resume(sessionId: event.sessionId, cwd: event.cwd)
+        resume(sessionId: event.sessionId, cwd: event.cwd, source: event.source)
     }
 
-    static func resume(sessionId: String, cwd: String) {
+    static func resume(sessionId: String, cwd: String, source: TranscriptSource = .claude) {
         guard !sessionId.isEmpty else { NSSound.beep(); return }
         let cdPart = cwd.isEmpty ? "" : "cd \(shQuote(cwd)) && "
-        let shellCommand = "\(cdPart)claude --resume \(shQuote(sessionId))"
+        let command: String
+        switch source {
+        case .claude:
+            command = "claude --resume \(shQuote(sessionId))"
+        case .codex:
+            command = "codex resume \(shQuote(sessionId))"
+        }
+        let shellCommand = "\(cdPart)\(command)"
         let script = """
         tell application "Terminal"
             activate

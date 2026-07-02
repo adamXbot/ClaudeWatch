@@ -22,6 +22,9 @@ public enum TranscriptHTMLRenderer {
     }
 
     public static func render(transcriptPath: String, highlightId: String) -> String? {
+        if transcriptPath.contains("/.codex/") {
+            return renderCodex(transcriptPath: transcriptPath, highlightId: highlightId)
+        }
         guard let text = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return nil }
 
         var sessionId = ""
@@ -63,6 +66,97 @@ public enum TranscriptHTMLRenderer {
 
         return page(title: "Claude thread — \((cwd as NSString).lastPathComponent)",
                     bodyHTML: header + body)
+    }
+
+    private static func renderCodex(transcriptPath: String, highlightId: String) -> String? {
+        guard let text = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return nil }
+
+        var sessionId = ""
+        var cwd = ""
+        var body = ""
+
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            guard let data = line.data(using: .utf8),
+                  let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let payload = obj["payload"] as? [String: Any]
+            else { continue }
+
+            let time = obj["timestamp"] as? String ?? ""
+            if obj["type"] as? String == "session_meta" {
+                sessionId = payload["session_id"] as? String ?? payload["id"] as? String ?? sessionId
+                cwd = payload["cwd"] as? String ?? cwd
+                continue
+            }
+
+            switch payload["type"] as? String {
+            case "user_message":
+                let msg = payload["message"] as? String ?? ""
+                if !msg.isEmpty {
+                    body += turn(role: "user", label: "You", time: time, inner: "<div class=\"prompt\">\(esc(msg))</div>")
+                }
+            case "agent_message":
+                let msg = payload["message"] as? String ?? ""
+                if !msg.isEmpty {
+                    body += turn(role: "assistant", label: "Codex", time: time, inner: "<div class=\"say\">\(esc(msg))</div>")
+                }
+            case "message":
+                if payload["role"] as? String == "assistant",
+                   let blocks = payload["content"] as? [[String: Any]] {
+                    let text = blocks.compactMap { $0["text"] as? String }.joined(separator: "\n")
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        body += turn(role: "assistant", label: "Codex", time: time, inner: "<div class=\"say\">\(esc(text))</div>")
+                    }
+                }
+            case "function_call", "custom_tool_call":
+                body += turn(role: "assistant", label: "Codex", time: time, inner: renderCodexTool(payload, highlightId: highlightId))
+            case "function_call_output", "custom_tool_call_output":
+                let output = payload["output"] as? String ?? ""
+                if !output.isEmpty {
+                    body += turn(role: "tool", label: "Tool output", time: time,
+                                 inner: "<details class=\"result\"><summary>tool result</summary><pre>\(esc(truncate(output, 4000)))</pre></details>")
+                }
+            default:
+                break
+            }
+        }
+
+        let header = """
+        <header>
+          <div class="title">Codex thread</div>
+          <div class="meta">
+            <span><b>project</b> \(esc((cwd as NSString).lastPathComponent))</span>
+            <span><b>session</b> <code>\(esc(sessionId))</code></span>
+          </div>
+          <div class="path">\(esc(transcriptPath))</div>
+        </header>
+        """
+
+        return page(title: "Codex thread — \((cwd as NSString).lastPathComponent)",
+                    bodyHTML: header + body)
+    }
+
+    private static func renderCodexTool(_ payload: [String: Any], highlightId: String) -> String {
+        let name = payload["name"] as? String ?? "tool"
+        let id = payload["call_id"] as? String ?? payload["id"] as? String ?? ""
+        let isTarget = id == highlightId
+        let cls = isTarget ? "tool target" : "tool"
+        let detail: String
+
+        if name == "exec_command" || name == "write_stdin" {
+            let args = parseJSONString(payload["arguments"] as? String)
+            detail = "<pre>\(esc(prettyJSON(args)))</pre>"
+        } else if name == "apply_patch" {
+            detail = "<pre>\(esc(truncate(payload["input"] as? String ?? "", 4000)))</pre>"
+        } else {
+            detail = "<pre>\(esc(truncate(prettyJSON(payload), 3000)))</pre>"
+        }
+
+        return """
+        <div class="\(cls)" id="\(esc(id))">
+          <div class="toolhead"><span class="badge">\(esc(name))</span>\(isTarget ? "<span class=\"here\">this command</span>" : "")</div>
+          \(detail)
+        </div>
+        """
     }
 
     // MARK: - Turn rendering
@@ -257,6 +351,13 @@ public enum TranscriptHTMLRenderer {
         guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
               let s = String(data: data, encoding: .utf8) else { return "" }
         return s
+    }
+
+    private static func parseJSONString(_ s: String?) -> [String: Any] {
+        guard let s, let data = s.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return [:] }
+        return obj
     }
 
     private static func truncate(_ s: String, _ max: Int) -> String {

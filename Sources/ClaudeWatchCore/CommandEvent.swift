@@ -5,6 +5,7 @@ import Foundation
 /// so it doubles as the dedupe key and the in-page anchor for the browser view.
 public struct CommandEvent: Identifiable, Hashable {
     public let id: String              // tool_use id
+    public let source: TranscriptSource
     public let kind: EventKind
     public let toolName: String        // raw tool name (Bash, Write, …)
     public let primary: String         // headline: command / path / url / query
@@ -18,11 +19,12 @@ public struct CommandEvent: Identifiable, Hashable {
     public let transcriptPath: String  // absolute path to the .jsonl that contains this event
 
     public init(
-        id: String, kind: EventKind, toolName: String, primary: String, secondary: String?,
+        id: String, source: TranscriptSource = .claude, kind: EventKind, toolName: String, primary: String, secondary: String?,
         sessionId: String, cwd: String, projectName: String, timestamp: Date,
         isSubagent: Bool, gitBranch: String?, transcriptPath: String
     ) {
         self.id = id
+        self.source = source
         self.kind = kind
         self.toolName = toolName
         self.primary = primary

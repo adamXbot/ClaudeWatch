@@ -27,11 +27,11 @@ struct ActiveSessionsView: View {
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
                     if session.state == .waiting {
-                        Button { Actions.resume(sessionId: session.id, cwd: session.cwd) } label: {
+                        Button { Actions.resume(sessionId: session.id, cwd: session.cwd, source: session.transcriptPath.contains("/.codex/") ? .codex : .claude) } label: {
                             Image(systemName: "arrow.uturn.left.circle").font(.system(size: 12))
                         }
                         .buttonStyle(.borderless)
-                        .help("Resume in Claude Code")
+                        .help("Resume")
                     }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 4)

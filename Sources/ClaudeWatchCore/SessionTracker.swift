@@ -43,7 +43,15 @@ public final class SessionTracker {
 
     public func ingest(line: Substring, path: String) {
         guard let data = line.data(using: .utf8),
-              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return }
+
+        if path.contains("/.codex/") {
+            ingestCodex(obj: obj, path: path)
+            return
+        }
+
+        guard
               let sessionId = obj["sessionId"] as? String, !sessionId.isEmpty
         else { return }
 
@@ -98,6 +106,85 @@ public final class SessionTracker {
                     s.lastStopReason = nil
                 }
             }
+        }
+
+        sessions[sessionId] = s
+    }
+
+    private func ingestCodex(obj: [String: Any], path: String) {
+        let ts = parseDate(obj["timestamp"] as? String)
+
+        if obj["type"] as? String == "session_meta",
+           let payload = obj["payload"] as? [String: Any] {
+            let sessionId = payload["session_id"] as? String ?? payload["id"] as? String ?? codexSessionId(from: path)
+            var s = sessions[sessionId] ?? State()
+            if let cwd = payload["cwd"] as? String, !cwd.isEmpty {
+                s.cwd = cwd
+                s.projectName = (cwd as NSString).lastPathComponent
+            }
+            s.transcriptPath = path
+            if let ts, ts > s.lastActivity {
+                s.lastActivity = ts
+                s.lastAssistantActivity = ts
+            }
+            sessions[sessionId] = s
+            return
+        }
+
+        guard let payload = obj["payload"] as? [String: Any] else { return }
+
+        if obj["type"] as? String == "event_msg",
+           payload["type"] as? String == "task_complete" {
+            let sessionId = codexKnownSessionId(for: path) ?? codexSessionId(from: path)
+            var s = sessions[sessionId] ?? State()
+            if s.transcriptPath.isEmpty { s.transcriptPath = path }
+            if let ts, ts > s.lastActivity { s.lastActivity = ts }
+            s.lastStopReason = "end_turn"
+            sessions[sessionId] = s
+            return
+        }
+
+        guard obj["type"] as? String == "response_item",
+              let payloadType = payload["type"] as? String
+        else { return }
+
+        let turnId = ((payload["internal_chat_message_metadata_passthrough"] as? [String: Any])?["turn_id"] as? String)
+        let sessionId = codexKnownSessionId(for: path) ?? turnId ?? codexSessionId(from: path)
+        var s = sessions[sessionId] ?? State()
+        if s.transcriptPath.isEmpty { s.transcriptPath = path }
+        if s.projectName == "unknown" {
+            s.projectName = (path as NSString).deletingPathExtension.components(separatedBy: "/").last ?? "Codex"
+        }
+        if let ts, ts > s.lastActivity { s.lastActivity = ts }
+
+        switch payloadType {
+        case "function_call", "custom_tool_call":
+            guard let id = payload["call_id"] as? String ?? payload["id"] as? String else { break }
+            let name = payload["name"] as? String ?? payloadType
+            if !s.pending.contains(id) { s.pending.append(id) }
+            s.pendingDesc[id] = summarizeCodex(payload: payload)
+            s.pendingTime[id] = ts ?? s.lastActivity
+            if let ts, ts > s.lastAssistantActivity { s.lastAssistantActivity = ts }
+            if ["exec_command", "write_stdin", "apply_patch"].contains(name) {
+                s.lastActionSummary = s.pendingDesc[id]
+            }
+
+        case "function_call_output", "custom_tool_call_output":
+            if let id = payload["call_id"] as? String {
+                s.pending.removeAll { $0 == id }
+                s.pendingDesc[id] = nil
+                s.pendingTime[id] = nil
+            }
+            if let ts, ts > s.lastAssistantActivity { s.lastAssistantActivity = ts }
+
+        default:
+            break
+        }
+
+        if payloadType == "message" {
+            // Assistant text is live work. User messages are separate event_msg records and
+            // intentionally don't make Codex appear "working".
+            if let ts, ts > s.lastAssistantActivity { s.lastAssistantActivity = ts }
         }
 
         sessions[sessionId] = s
@@ -205,6 +292,44 @@ public final class SessionTracker {
         default:
             return name
         }
+    }
+
+    private func summarizeCodex(payload: [String: Any]) -> String {
+        let name = payload["name"] as? String ?? "tool"
+        if name == "exec_command" {
+            let args = parseJSONString(payload["arguments"] as? String)
+            let cmd = (args["cmd"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return cmd.split(separator: "\n").first.map(String.init) ?? "terminal command"
+        }
+        if name == "write_stdin" {
+            return "terminal input"
+        }
+        if name == "apply_patch" {
+            let patch = payload["input"] as? String ?? ""
+            for line in patch.split(separator: "\n") {
+                if line.hasPrefix("*** Update File: ") { return String(line.dropFirst("*** Update File: ".count)) }
+                if line.hasPrefix("*** Add File: ") { return String(line.dropFirst("*** Add File: ".count)) }
+                if line.hasPrefix("*** Delete File: ") { return String(line.dropFirst("*** Delete File: ".count)) }
+            }
+            return "apply patch"
+        }
+        return name
+    }
+
+    private func parseJSONString(_ s: String?) -> [String: Any] {
+        guard let s, let data = s.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return [:] }
+        return obj
+    }
+
+    private func codexSessionId(from path: String) -> String {
+        ((path as NSString).deletingPathExtension as NSString).lastPathComponent
+            .replacingOccurrences(of: "rollout-", with: "")
+    }
+
+    private func codexKnownSessionId(for path: String) -> String? {
+        sessions.first { $0.value.transcriptPath == path }?.key
     }
 
     private func idleString(_ seconds: TimeInterval) -> String {

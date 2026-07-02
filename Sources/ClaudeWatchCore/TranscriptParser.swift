@@ -47,6 +47,7 @@ public enum TranscriptParser {
             let described = describe(kind: kind, name: name, input: input, cwd: cwd)
             events.append(CommandEvent(
                 id: id,
+                source: .claude,
                 kind: kind,
                 toolName: name,
                 primary: described.primary,

@@ -6,12 +6,13 @@ import ClaudeWatchCore
 /// end-to-end without launching the menu-bar UI.
 enum DumpRunner {
     static func run() {
-        let scanner = EventScanner()
+        let source: TranscriptSource = CommandLine.arguments.contains("--codex") ? .codex : .claude
+        let scanner = EventScanner(source: source)
         let events = scanner.fullScan().sorted { $0.timestamp > $1.timestamp }
         let limit = 40
 
         FileHandle.standardError.write(Data(
-            "ClaudeWatch --dump: \(events.count) command events from \(scanner.root.path)\n\n".utf8
+            "ClaudeWatch --dump\(source == .codex ? " --codex" : ""): \(events.count) \(source.displayName) command events from \(scanner.root.path)\n\n".utf8
         ))
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"

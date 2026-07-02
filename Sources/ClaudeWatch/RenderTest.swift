@@ -5,10 +5,11 @@ import ClaudeWatchCore
 /// structural assertions, so the browser view can be verified without a GUI.
 enum RenderTest {
     static func run() {
-        let scanner = EventScanner()
+        let source: TranscriptSource = CommandLine.arguments.contains("--codex") ? .codex : .claude
+        let scanner = EventScanner(source: source)
         let events = scanner.fullScan().sorted { $0.timestamp > $1.timestamp }
 
-        let requested = CommandLine.arguments.first { $0.hasPrefix("toolu_") }
+        let requested = CommandLine.arguments.first { $0.hasPrefix("toolu_") || $0.hasPrefix("call_") }
         let event = requested.flatMap { id in events.first { $0.id == id } } ?? events.first
 
         guard let event else { print("no events found"); exit(1) }

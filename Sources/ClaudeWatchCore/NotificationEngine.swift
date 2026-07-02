@@ -51,7 +51,7 @@ public final class NotificationEngine {
             for rule in cfg.rules where rule.matches(event: event) {
                 dispatch(key: "\(rule.id.uuidString)|a|\(event.id)",
                          rule: rule,
-                         title: "ClaudeWatch · \(event.projectName)",
+                         title: "\(event.source == .codex ? "CodexWatch" : "ClaudeWatch") · \(event.projectName)",
                          body: "\(rule.name): \(event.primary)",
                          cfg: cfg)
             }

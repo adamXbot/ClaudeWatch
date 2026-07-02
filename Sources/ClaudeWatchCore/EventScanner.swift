@@ -5,12 +5,13 @@ import Foundation
 /// the newly-appended, complete lines on each poll.
 public final class EventScanner {
 
+    public let source: TranscriptSource
     public let root: URL
+    private var codexContexts: [String: CodexTranscriptParser.FileContext] = [:]
 
-    public init(root: URL? = nil) {
-        self.root = root ?? FileManager.default
-            .homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/projects", isDirectory: true)
+    public init(source: TranscriptSource = .claude, root: URL? = nil) {
+        self.source = source
+        self.root = root ?? source.defaultRoot
     }
 
     /// All `*.jsonl` transcripts (top-level sessions and nested subagent/workflow runs).
@@ -23,6 +24,12 @@ public final class EventScanner {
 
         var files: [URL] = []
         for case let url as URL in en where url.pathExtension == "jsonl" {
+            if source == .codex && root.path.contains("/.codex") {
+                let path = url.path
+                guard path.contains("/.codex/sessions/") || path.contains("/.codex/archived_sessions/") else {
+                    continue
+                }
+            }
             files.append(url)
         }
         return files
@@ -31,8 +38,13 @@ public final class EventScanner {
     /// Full one-shot scan of every transcript. Used by `--dump` and as the implicit
     /// first poll (when all offsets start at 0).
     public func fullScan() -> [CommandEvent] {
+        reset()
         var offsets: [String: UInt64] = [:]
         return parseDelta(offsets: &offsets)
+    }
+
+    public func reset() {
+        codexContexts.removeAll()
     }
 
     /// Stream every newly-appended, complete line since the last call, invoking `onLine`
@@ -57,6 +69,9 @@ public final class EventScanner {
             }
             offsets[path] = newOffset
 
+            if start == 0 && source == .codex {
+                codexContexts[path] = CodexTranscriptParser.FileContext()
+            }
             let text = String(decoding: data, as: UTF8.self)
             for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
                 onLine(line, path)
@@ -68,6 +83,7 @@ public final class EventScanner {
         if offsets.count > files.count {
             let live = Set(files.map { $0.path })
             offsets = offsets.filter { live.contains($0.key) }
+            codexContexts = codexContexts.filter { live.contains($0.key) }
         }
     }
 
@@ -75,9 +91,21 @@ public final class EventScanner {
     public func parseDelta(offsets: inout [String: UInt64]) -> [CommandEvent] {
         var results: [CommandEvent] = []
         scanDelta(offsets: &offsets) { line, path in
-            results.append(contentsOf: TranscriptParser.events(fromLine: line, transcriptPath: path))
+            results.append(contentsOf: events(fromLine: line, transcriptPath: path))
         }
         return results
+    }
+
+    public func events(fromLine line: Substring, transcriptPath path: String) -> [CommandEvent] {
+        switch source {
+        case .claude:
+            return TranscriptParser.events(fromLine: line, transcriptPath: path)
+        case .codex:
+            var context = codexContexts[path] ?? CodexTranscriptParser.FileContext()
+            let events = CodexTranscriptParser.events(fromLine: line, transcriptPath: path, context: &context)
+            codexContexts[path] = context
+            return events
+        }
     }
 
     // MARK: - Low level

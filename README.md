@@ -19,15 +19,15 @@
 ---
 
 A lightweight macOS **menu-bar app that shows the latest system-touching actions
-[Claude Code](https://claude.com/claude-code) performs on your machine** — shell
-commands, file writes/edits, and network fetches — so you can see at a glance what the
-AI is actually doing.
+[Claude Code](https://claude.com/claude-code) and Codex perform on your machine** —
+shell commands, file writes/edits, and network fetches — so you can see at a glance
+what the AI is actually doing.
 
 Each entry links back to the thread that issued it: open the full conversation in your
-browser (scrolled to the exact command), or resume that session in Claude Code.
+browser (scrolled to the exact command), or resume that session in Claude Code / Codex.
 
-It is a **read-only history tool**. It only ever reads your local Claude Code transcripts
-under `~/.claude/projects` and makes **no network connections**.
+It is a **read-only history tool**. It only ever reads your local Claude Code and Codex
+transcripts under `~/.claude/projects` and `~/.codex`, and makes **no network connections**.
 
 ## What it shows
 
@@ -47,16 +47,19 @@ can be hidden with one toggle.
 ## How it works
 
 - Watches every `*.jsonl` transcript under `~/.claude/projects` (main sessions and nested
-  subagent runs), polling once a second and reading only newly-appended lines.
+  subagent runs), plus Codex sessions under `~/.codex/sessions` and
+  `~/.codex/archived_sessions`, polling once a second and reading only newly-appended lines.
 - Each Claude `tool_use` of a system-touching tool becomes a row. The transcript envelope
   supplies the `sessionId` (the thread), `cwd` (the project), timestamp, git branch, and
   whether it came from a subagent.
+- Each Codex `exec_command`, `apply_patch`, and `write_stdin` call becomes a row. Session
+  metadata supplies the project and thread.
 
 ## Actions per row
 
 - **Click / 🌐** — render the full thread to HTML and open it in your browser, scrolled
   to that command (subagent rows open the subagent's own transcript).
-- **⌨️ terminal** — open Terminal in the project and run `claude --resume <sessionId>`.
+- **⌨️ terminal** — open Terminal in the project and resume the source session.
 - **📋 copy** — copy the command. Right-click for more (copy session id, reveal transcript).
 
 Plus search, per-kind filters, a hide-subagents toggle, and pause.
@@ -65,7 +68,8 @@ Plus search, per-kind filters, a hide-subagents toggle, and pause.
 
 Download the latest `ClaudeWatch.zip` from the
 [Releases](https://github.com/adamXbot/ClaudeWatch/releases) page, unzip, and drag
-`ClaudeWatch.app` to `/Applications`. The ✨ icon appears in your menu bar (no Dock icon).
+`ClaudeWatch.app` to `/Applications`. Two icons appear in your menu bar: one for Claude
+activity and one for Codex activity (no Dock icon).
 
 Signed + notarized releases open normally. For an unsigned build, right-click → Open the
 first time, or allow it under System Settings → Privacy & Security.
