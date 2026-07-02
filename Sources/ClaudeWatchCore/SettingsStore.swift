@@ -9,6 +9,8 @@ public final class SettingsStore: ObservableObject {
     @Published public var rules: [NotificationRule] { didSet { persist() } }
     @Published public var webhooks: [WebhookDestination] { didSet { persist() } }
     @Published public var systemNotificationsEnabled: Bool { didSet { persist() } }
+    @Published public var claudeVisibility: SourceVisibility { didSet { persist() } }
+    @Published public var codexVisibility: SourceVisibility { didSet { persist() } }
 
     /// Called (post-change) whenever settings change, so the app can push a fresh snapshot
     /// to the notification engine.
@@ -18,6 +20,8 @@ public final class SettingsStore: ObservableObject {
     private let rulesKey = "claudewatch.rules.v1"
     private let webhooksKey = "claudewatch.webhooks.v1"
     private let systemKey = "claudewatch.systemNotifications.v1"
+    private let claudeVisibilityKey = "claudewatch.sourceVisibility.claude.v1"
+    private let codexVisibilityKey = "claudewatch.sourceVisibility.codex.v1"
     private var loaded = false
 
     public init(defaults: UserDefaults = .standard) {
@@ -25,6 +29,8 @@ public final class SettingsStore: ObservableObject {
         self.rules = []
         self.webhooks = []
         self.systemNotificationsEnabled = true
+        self.claudeVisibility = .automatic
+        self.codexVisibility = .automatic
         load()
         loaded = true
     }
@@ -82,6 +88,14 @@ public final class SettingsStore: ObservableObject {
         if defaults.object(forKey: systemKey) != nil {
             systemNotificationsEnabled = defaults.bool(forKey: systemKey)
         }
+        if let raw = defaults.string(forKey: claudeVisibilityKey),
+           let v = SourceVisibility(rawValue: raw) {
+            claudeVisibility = v
+        }
+        if let raw = defaults.string(forKey: codexVisibilityKey),
+           let v = SourceVisibility(rawValue: raw) {
+            codexVisibility = v
+        }
     }
 
     private func persist() {
@@ -90,6 +104,8 @@ public final class SettingsStore: ObservableObject {
         if let data = try? encoder.encode(rules) { defaults.set(data, forKey: rulesKey) }
         if let data = try? encoder.encode(webhooks) { defaults.set(data, forKey: webhooksKey) }
         defaults.set(systemNotificationsEnabled, forKey: systemKey)
+        defaults.set(claudeVisibility.rawValue, forKey: claudeVisibilityKey)
+        defaults.set(codexVisibility.rawValue, forKey: codexVisibilityKey)
         onChange?()
     }
 }

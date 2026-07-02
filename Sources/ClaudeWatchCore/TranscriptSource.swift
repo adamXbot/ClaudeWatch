@@ -35,3 +35,17 @@ public enum TranscriptSource: String, Codable, Hashable, CaseIterable {
         }
     }
 }
+
+public enum SourceVisibility: String, Codable, Hashable, CaseIterable {
+    case automatic
+    case show
+    case hide
+
+    public var label: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .show: return "Show"
+        case .hide: return "Hide"
+        }
+    }
+}

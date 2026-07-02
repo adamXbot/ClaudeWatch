@@ -89,4 +89,18 @@ final class SettingsStoreTests: XCTestCase {
         store.systemNotificationsEnabled = false
         XCTAssertFalse(store.snapshot().systemEnabled)
     }
+
+    func testSourceVisibilityRoundTripsThroughUserDefaults() {
+        let suite = "claudewatch.test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsStore(defaults: defaults)
+        store.claudeVisibility = .hide
+        store.codexVisibility = .show
+
+        let reloaded = SettingsStore(defaults: defaults)
+        XCTAssertEqual(reloaded.claudeVisibility, .hide)
+        XCTAssertEqual(reloaded.codexVisibility, .show)
+    }
 }

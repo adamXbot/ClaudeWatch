@@ -22,6 +22,8 @@ private struct GeneralTab: View {
 
     var body: some View {
         Form {
+            sourceSection
+            Divider()
             Toggle("Enable system notifications", isOn: $settings.systemNotificationsEnabled)
             Text("macOS asks for permission the first time. Change it later in System Settings → Notifications → ClaudeWatch.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -47,6 +49,25 @@ private struct GeneralTab: View {
             aboutSection
         }
         .padding(20)
+    }
+
+    private var sourceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Menu bar icons")
+                .font(.system(size: 13, weight: .semibold))
+            Picker("Claude", selection: $settings.claudeVisibility) {
+                ForEach(SourceVisibility.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            Picker("Codex", selection: $settings.codexVisibility) {
+                ForEach(SourceVisibility.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            Text("Automatic shows an icon only when local transcripts exist. Show forces it on; Hide turns it off.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 
     private var aboutSection: some View {
