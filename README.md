@@ -4,114 +4,96 @@
 
 # ClaudeWatch
 
-**See what Claude Code has been up to on your machine, and filter it down to keep track**
+**A macOS menu-bar history of the system-touching actions Claude Code and Codex run on your machine**
 
-<p>
-  <a href="https://github.com/adamXbot/ClaudeWatch/actions/workflows/build.yml"><img alt="CI" src="https://github.com/adamXbot/ClaudeWatch/actions/workflows/build.yml/badge.svg"></a>
-  <a href="https://github.com/adamXbot/ClaudeWatch/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/adamXbot/ClaudeWatch?color=2f7df0&label=release"></a>
-  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-000000?logo=apple&logoColor=white">
-  <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
-  <a href="https://sparkle-project.org"><img alt="Auto-update via Sparkle" src="https://img.shields.io/badge/auto--update-Sparkle-9b59b6"></a>
-</p>
+[![Project status](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FadamXbot%2F.github%2Fmain%2Fbadges%2FClaudeWatch.json)](https://github.com/adamXbot/.github/blob/main/STATUS.md#claudewatch)
+[![CI](https://img.shields.io/github/actions/workflow/status/adamXbot/ClaudeWatch/build.yml?branch=main&label=ci)](https://github.com/adamXbot/ClaudeWatch/actions/workflows/build.yml)
+[![Licence](https://img.shields.io/github/license/adamXbot/ClaudeWatch?label=licence)](LICENSE)
 
 </div>
 
+<!-- disclosure:start -->
+> [!WARNING]
+> **Pre-1.0 — no stable release yet.** Anything can change in any release, including a patch: APIs, CLI flags, config keys, file formats, and data already on disk. Keep your own backups.
+> **Project status.** The badge above is generated from [the adamXbot status list](https://github.com/adamXbot/.github/blob/main/STATUS.md), which says what I promise for this project and every other one.
+<!-- disclosure:end -->
+
 ---
 
-A lightweight macOS **menu-bar app that shows the latest system-touching actions
-[Claude Code](https://claude.com/claude-code) and Codex perform on your machine** —
-shell commands, file writes/edits, and network fetches — so you can see at a glance
-what the AI is actually doing.
+A lightweight menu-bar app that shows the latest system-touching actions
+[Claude Code](https://claude.com/claude-code) and Codex perform on your machine — shell
+commands, file writes and edits, and network fetches — so you can see at a glance what the
+AI is actually doing.
 
 Each entry links back to the thread that issued it: open the full conversation in your
-browser (scrolled to the exact command), or resume that session in Claude Code / Codex.
+browser (scrolled to the exact command), or resume that session in Claude Code or Codex.
 
-It is a **read-only history tool**. It only ever reads your local Claude Code and Codex
-transcripts under `~/.claude/projects` and `~/.codex`, and makes **no network connections**.
+It reads your local transcripts under `~/.claude/projects` and `~/.codex` and never writes
+to them, and there is no telemetry. It is not fully offline, though: it embeds
+[Sparkle](https://sparkle-project.org) for in-app updates, which polls an update feed, and
+any webhook you configure sends notifications to the URL you give it.
 
-## What it shows
+## What it does
 
-| Tool | Shown as |
-|------|----------|
-| `Bash` | the shell command + its description |
-| `Write` | the file path written + size |
-| `Edit` / `MultiEdit` | the file path edited |
-| `NotebookEdit` | the notebook path + edit mode |
-| `WebFetch` | the URL fetched |
-| `WebSearch` | the search query |
+- **Watches every `*.jsonl` transcript** under `~/.claude/projects` (main sessions and
+  nested subagent runs), plus Codex sessions under `~/.codex/sessions` and
+  `~/.codex/archived_sessions`. It polls once a second and reads only newly-appended lines.
+- **Turns each system-touching call into a row.** From Claude: `Bash` (the command plus its
+  description), `Write` (path and size), `Edit` / `MultiEdit` (path), `NotebookEdit`
+  (notebook and edit mode), `WebFetch` (URL), `WebSearch` (query). From Codex:
+  `exec_command`, `write_stdin`, and `apply_patch`. Read-only tools (Read, Grep, Glob, Task
+  and friends) are deliberately excluded — this is about what the AI *does*, not what it
+  looks at.
+- **Links each row to its source.** Click a row to render the whole thread to HTML and open
+  it in your browser at that command; subagent rows open the subagent's own transcript.
+  There are also buttons to open Terminal in the project and resume the session
+  (`claude --resume` or `codex resume`), and to copy the command. Right-click for more —
+  copy the session id, reveal the transcript file.
+- **Tracks live sessions.** An "Active sessions" strip shows which sessions are working and
+  which are waiting on you, and the menu-bar icon switches to a bell when one is waiting.
+- **Notifies you on your own rules.** Rules can fire on a matching action or when a session
+  finishes, scoped to all projects or a chosen set, and can go to a macOS notification or to
+  a Discord, Slack, Microsoft Teams, or generic JSON webhook. Webhook URLs are stored in the
+  Keychain rather than in preferences, because they often carry a token.
+- **Filters what you see.** Search, per-kind and per-project toggles, a hide-subagents
+  toggle, and a pause button.
 
-Read-only tools (Read/Grep/Glob/Task/…) are deliberately excluded — this is about what the
-AI *does*, not what it looks at. Subagent / workflow activity is included and tagged, and
-can be hidden with one toggle.
+One menu-bar item appears per source that has transcripts (Claude and Codex are tracked
+separately), and you can force either one to always show or always hide in Settings. There
+is no Dock icon.
 
-## How it works
+## Get it
 
-- Watches every `*.jsonl` transcript under `~/.claude/projects` (main sessions and nested
-  subagent runs), plus Codex sessions under `~/.codex/sessions` and
-  `~/.codex/archived_sessions`, polling once a second and reading only newly-appended lines.
-- Each Claude `tool_use` of a system-touching tool becomes a row. The transcript envelope
-  supplies the `sessionId` (the thread), `cwd` (the project), timestamp, git branch, and
-  whether it came from a subagent.
-- Each Codex `exec_command`, `apply_patch`, and `write_stdin` call becomes a row. Session
-  metadata supplies the project and thread.
-
-## Actions per row
-
-- **Click / 🌐** — render the full thread to HTML and open it in your browser, scrolled
-  to that command (subagent rows open the subagent's own transcript).
-- **⌨️ terminal** — open Terminal in the project and resume the source session.
-- **📋 copy** — copy the command. Right-click for more (copy session id, reveal transcript).
-
-Plus search, per-kind filters, a hide-subagents toggle, and pause.
-
-## Install
-
-Download the latest `ClaudeWatch.zip` from the
-[Releases](https://github.com/adamXbot/ClaudeWatch/releases) page, unzip, and drag
-`ClaudeWatch.app` to `/Applications`. Two icons appear in your menu bar: one for Claude
-activity and one for Codex activity (no Dock icon).
-
-Signed + notarized releases open normally. For an unsigned build, right-click → Open the
-first time, or allow it under System Settings → Privacy & Security.
-
-To launch at login: System Settings → General → Login Items → **+**.
-
-
-## Build from source
-
-Requires macOS 13+ and a Swift toolchain (Xcode or Command Line Tools).
+There is no packaged download yet — no release has been published, and there is no Homebrew
+formula. For now, build it yourself. You need macOS 13 or later and a Swift 5.9 toolchain
+(Xcode or the Command Line Tools).
 
 ```sh
-./build.sh            # produces ClaudeWatch.app
-open ClaudeWatch.app
+git clone https://github.com/adamXbot/ClaudeWatch.git
+cd ClaudeWatch
+./build.sh            # produces ClaudeWatch.app, then opens it
 ```
 
-## Project layout
+Local builds are unsigned, so the first launch needs a right-click → Open, or an approval
+under System Settings → Privacy & Security. To start it at login, add `ClaudeWatch.app`
+under System Settings → General → Login Items.
 
-```
-Sources/ClaudeWatchCore/   # pure, headless logic — unit-tested
-  EventKind, CommandEvent, TranscriptParser, EventScanner,
-  TranscriptStore, TranscriptHTMLRenderer, RelativeTime
-Sources/ClaudeWatch/       # the SwiftUI menu-bar app
-  ClaudeWatchApp, MenuContentView, CommandRowView, Actions, main
-Tests/ClaudeWatchTests/    # XCTest coverage for the Core
-```
+"Resume in Claude Code" needs the `claude` CLI on your `PATH`, and the Codex equivalent
+needs `codex`.
+
+## Contributing
+
+CI runs `swift build -c release`, `swift test`, and `./build.sh release` on macOS, on every
+push to `main` and every pull request against it. Run the same locally before you open one:
 
 ```sh
-swift test            # run the Core test suite
+swift test
+./build.sh release
 ```
 
-### Headless inspection
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the project layout, the headless inspection mode,
+and the release job.
 
-The same binary can dump the latest parsed actions as text — handy for verifying parsing
-without the UI:
+## Licence
 
-```sh
-swift run ClaudeWatch --dump
-```
-
-
-## Notes
-
-- "Resume in Claude Code" requires the `claude` CLI on your `PATH`.
-- No telemetry, no network, no data leaves your machine.
+MIT — see [LICENSE](LICENSE).
