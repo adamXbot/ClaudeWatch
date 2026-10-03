@@ -22,6 +22,10 @@ public final class SessionTracker {
     private let config: Config
     public init(config: Config = Config()) { self.config = config }
 
+    /// How long after its last record a session is still tracked. A transcript nobody has
+    /// written to for longer than this cannot change what `snapshot` reports.
+    public var evictionHorizon: TimeInterval { config.evictionHorizon }
+
     private struct State {
         var projectName = "unknown"
         var cwd = ""
@@ -39,14 +43,30 @@ public final class SessionTracker {
     private var sessions: [String: State] = [:]
     private var doneQueue: [SessionStatus] = []      // genuine working → waiting transitions
 
+    /// What a transcript's path says about it. Asked for every record, so the answer for
+    /// the file being read is kept instead of searching the path again each time.
+    private var pathKind: (path: String, isCodex: Bool, isSubagent: Bool)?
+
+    private func kind(of path: String) -> (isCodex: Bool, isSubagent: Bool) {
+        if let known = pathKind, known.path == path { return (known.isCodex, known.isSubagent) }
+        let kind = (isCodex: path.contains("/.codex/"), isSubagent: path.contains("/subagents/"))
+        pathKind = (path, kind.isCodex, kind.isSubagent)
+        return kind
+    }
+
     // MARK: - Ingest
 
     public func ingest(line: Substring, path: String) {
         guard let data = line.data(using: .utf8),
               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else { return }
+        ingest(record: obj, path: path)
+    }
 
-        if path.contains("/.codex/") {
+    /// The same, for a line that has already been parsed.
+    func ingest(record obj: [String: Any], path: String) {
+        let pathKind = kind(of: path)
+        if pathKind.isCodex {
             ingestCodex(obj: obj, path: path)
             return
         }
@@ -58,7 +78,7 @@ public final class SessionTracker {
         let type = obj["type"] as? String
         let isSub = (obj["isSidechain"] as? Bool == true)
             || (obj["agentId"] != nil)
-            || path.contains("/subagents/")
+            || pathKind.isSubagent
         let ts = parseDate(obj["timestamp"] as? String)
 
         var s = sessions[sessionId] ?? State()
@@ -278,7 +298,7 @@ public final class SessionTracker {
         switch name {
         case "Bash":
             let cmd = (input["command"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            return cmd.split(separator: "\n").first.map(String.init) ?? "shell"
+            return Self.firstLine(of: cmd) ?? "shell"
         case "Write", "Edit", "MultiEdit":
             return ((input["file_path"] as? String ?? "file") as NSString).lastPathComponent
         case "NotebookEdit":
@@ -299,7 +319,7 @@ public final class SessionTracker {
         if name == "exec_command" {
             let args = parseJSONString(payload["arguments"] as? String)
             let cmd = (args["cmd"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            return cmd.split(separator: "\n").first.map(String.init) ?? "terminal command"
+            return Self.firstLine(of: cmd) ?? "terminal command"
         }
         if name == "write_stdin" {
             return "terminal input"
@@ -314,6 +334,26 @@ public final class SessionTracker {
             return "apply patch"
         }
         return name
+    }
+
+    /// `text.split(separator: "\n").first`, found from the bytes instead of by walking every
+    /// character of a command that may be a long script. A line feed is its own character
+    /// unless a carriage return precedes it ("\r\n" is a single one, which is not "\n").
+    static func firstLine(of text: String) -> String? {
+        let utf8 = text.utf8
+        var start = utf8.startIndex
+        var previous: UInt8 = 0
+        var index = start
+        while index != utf8.endIndex {
+            let byte = utf8[index]
+            if byte == 0x0A && previous != 0x0D {
+                if index != start { return String(text[start..<index]) }
+                start = utf8.index(after: index)        // an empty line: keep looking
+            }
+            previous = byte
+            index = utf8.index(after: index)
+        }
+        return start == utf8.endIndex ? nil : String(text[start...])
     }
 
     private func parseJSONString(_ s: String?) -> [String: Any] {
@@ -339,14 +379,8 @@ public final class SessionTracker {
         return "\(m / 60)h"
     }
 
-    private static let isoFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
-    }()
-    private static let isoPlain: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
-    }()
     private func parseDate(_ s: String?) -> Date? {
         guard let s else { return nil }
-        return Self.isoFractional.date(from: s) ?? Self.isoPlain.date(from: s)
+        return ISOTimestamp.date(from: s)
     }
 }

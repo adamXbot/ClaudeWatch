@@ -10,11 +10,23 @@ public enum CodexTranscriptParser {
         }
     }
 
+    /// A line that contains none of these can neither produce an event nor change the
+    /// file's context, so a reader that only wants events can skip it without parsing.
+    /// They are the record types `events` looks at, not the tool names, so surfacing another
+    /// tool needs no change here. (Their `_output` counterparts, where the bulk is, differ.)
+    static let eventMarkers = LineMarkers([
+        #""session_meta""#, #""function_call""#, #""custom_tool_call""#,
+    ])
+
     public static func events(fromLine line: Substring, transcriptPath: String, context: inout FileContext) -> [CommandEvent] {
         guard let data = line.data(using: .utf8),
               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else { return [] }
+        return events(fromRecord: obj, transcriptPath: transcriptPath, context: &context)
+    }
 
+    /// The same, for a line that has already been parsed.
+    static func events(fromRecord obj: [String: Any], transcriptPath: String, context: inout FileContext) -> [CommandEvent] {
         if obj["type"] as? String == "session_meta",
            let payload = obj["payload"] as? [String: Any] {
             if let id = payload["session_id"] as? String ?? payload["id"] as? String {
@@ -176,18 +188,8 @@ public enum CodexTranscriptParser {
         return out
     }
 
-    private static let isoFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-    private static let isoPlain: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
     private static func parseDate(_ s: String?) -> Date {
         guard let s else { return .distantPast }
-        return isoFractional.date(from: s) ?? isoPlain.date(from: s) ?? .distantPast
+        return ISOTimestamp.date(from: s) ?? .distantPast
     }
 }

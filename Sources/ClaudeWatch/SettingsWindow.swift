@@ -9,6 +9,9 @@ final class SettingsWindowController {
     private var window: NSWindow?
 
     func show(settings: SettingsStore, store: TranscriptStore, engine: NotificationEngine, updater: UpdaterViewModel) {
+        // The rule editor lists projects from the feed, which a source nobody needed yet
+        // has not read.
+        store.loadIfNeeded()
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

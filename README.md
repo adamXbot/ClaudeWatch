@@ -37,7 +37,9 @@ any webhook you configure sends notifications to the URL you give it.
 
 - **Watches every `*.jsonl` transcript** under `~/.claude/projects` (main sessions and
   nested subagent runs), plus Codex sessions under `~/.codex/sessions` and
-  `~/.codex/archived_sessions`. It polls once a second and reads only newly-appended lines.
+  `~/.codex/archived_sessions`. It is told by the system (FSEvents) which transcripts were
+  written and reads only their newly-appended lines, so a quiet history costs nothing. On
+  launch it reads the sessions of the last day and as much older history as the feed shows.
 - **Turns each system-touching call into a row.** From Claude: `Bash` (the command plus its
   description), `Write` (path and size), `Edit` / `MultiEdit` (path), `NotebookEdit`
   (notebook and edit mode), `WebFetch` (URL), `WebSearch` (query). From Codex:
