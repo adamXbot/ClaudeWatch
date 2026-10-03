@@ -48,4 +48,13 @@ public enum SourceVisibility: String, Codable, Hashable, CaseIterable {
         case .hide: return "Hide"
         }
     }
+
+    /// Whether the source's menu bar icon is shown, given whether it has local transcripts.
+    public func isInserted(hasTranscripts: Bool) -> Bool {
+        switch self {
+        case .automatic: return hasTranscripts
+        case .show: return true
+        case .hide: return false
+        }
+    }
 }

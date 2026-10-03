@@ -14,18 +14,27 @@ struct ClaudeWatchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var claudeStore: TranscriptStore
     @StateObject private var codexStore: TranscriptStore
-    @StateObject private var settings: SettingsStore
-    @StateObject private var availability = SourceAvailability()
+    @StateObject private var menuBar: MenuBarInsertion
     @StateObject private var updater = UpdaterViewModel()
+    // Deliberately not observed here: the scenes re-render for `menuBar`, never for a
+    // settings or availability publish (see `MenuBarInsertion`).
+    private let settings: SettingsStore
+    private let availability: SourceAvailability
     private let engine = NotificationEngine()
 
     init() {
         let claudeStore = TranscriptStore(scanner: EventScanner(source: .claude))
         let codexStore = TranscriptStore(scanner: EventScanner(source: .codex))
         let settings = SettingsStore()
+        let availability = SourceAvailability()
+        let menuBar = MenuBarInsertion(
+            settings: settings, hasClaude: availability.$hasClaude, hasCodex: availability.$hasCodex
+        )
         _claudeStore = StateObject(wrappedValue: claudeStore)
         _codexStore = StateObject(wrappedValue: codexStore)
-        _settings = StateObject(wrappedValue: settings)
+        _menuBar = StateObject(wrappedValue: menuBar)
+        self.settings = settings
+        self.availability = availability
 
         // Wire settings → engine and the live feed → engine.
         engine.updateConfig(settings.snapshot())
@@ -92,33 +101,16 @@ struct ClaudeWatchApp: App {
         return fallback
     }
 
-    private func isVisible(_ source: TranscriptSource) -> Bool {
-        let mode = source == .claude ? settings.claudeVisibility : settings.codexVisibility
-        switch mode {
-        case .automatic:
-            return availability.hasTranscripts(for: source)
-        case .show:
-            return true
-        case .hide:
-            return false
-        }
-    }
-
     private func sourceInsertedBinding(_ source: TranscriptSource) -> Binding<Bool> {
         Binding(
-            get: { isVisible(source) },
-            set: { inserted in
-                if !inserted {
-                    if source == .claude { settings.claudeVisibility = .hide }
-                    else { settings.codexVisibility = .hide }
-                }
-            }
+            get: { menuBar.isInserted(source) },
+            set: { menuBar.report(source, inserted: $0) }
         )
     }
 
     private var fallbackInsertedBinding: Binding<Bool> {
         Binding(
-            get: { !isVisible(.claude) && !isVisible(.codex) },
+            get: { menuBar.fallback },
             set: { _ in }
         )
     }
