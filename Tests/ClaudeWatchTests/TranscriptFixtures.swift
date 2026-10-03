@@ -96,6 +96,19 @@ struct TranscriptFixtures {
     }
 }
 
+/// Settings that live in memory, so a test leaves no preferences file behind.
+final class MemoryDefaults: UserDefaults {
+    private var values: [String: Any] = [:]
+
+    override func object(forKey defaultName: String) -> Any? { values[defaultName] }
+    override func data(forKey defaultName: String) -> Data? { values[defaultName] as? Data }
+    override func string(forKey defaultName: String) -> String? { values[defaultName] as? String }
+    override func bool(forKey defaultName: String) -> Bool { values[defaultName] as? Bool ?? false }
+    override func set(_ value: Any?, forKey defaultName: String) { values[defaultName] = value }
+    override func set(_ value: Bool, forKey defaultName: String) { values[defaultName] = value }
+    override func removeObject(forKey defaultName: String) { values[defaultName] = nil }
+}
+
 /// A watcher the test fires by hand, on the store's own queue like the real one.
 final class ManualWatcher: TranscriptWatching {
     private(set) var directories: [URL] = []

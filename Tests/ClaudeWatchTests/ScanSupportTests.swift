@@ -84,22 +84,14 @@ final class ScanDemandTests: XCTestCase {
         func stop() { calls.append("stop") }
     }
 
-    private var suite = ""
-    private var defaults: UserDefaults!
     private var settings: SettingsStore!
     private var hasClaude: CurrentValueSubject<Bool, Never>!
     private var hasCodex: CurrentValueSubject<Bool, Never>!
 
     override func setUp() {
-        suite = "claudewatch.test.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
-        settings = SettingsStore(defaults: defaults)
+        settings = SettingsStore(defaults: MemoryDefaults())
         hasClaude = CurrentValueSubject(false)
         hasCodex = CurrentValueSubject(false)
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suite)
     }
 
     private func makeDemand(claude: Recorder, codex: Recorder) -> ScanDemand {
