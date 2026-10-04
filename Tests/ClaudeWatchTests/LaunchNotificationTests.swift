@@ -34,7 +34,7 @@ final class LaunchNotificationTests: XCTestCase {
 
     /// The source this test does not look at.
     private final class Unwatched: ScanControl {
-        func start(announceBacklog: Bool) {}
+        func start() {}
         func stop() {}
     }
 
@@ -96,5 +96,51 @@ final class LaunchNotificationTests: XCTestCase {
         waitUntil("the append is shown") { store.events.count == 2 }
         store.onScanQueue {}
         XCTAssertEqual(engine.dispatched, ["Commits: new"], "what happens after launch is")
+    }
+
+    func testWhatWasWrittenWhileTheAppWasNotRunningIsShownButNotNotified() throws {
+        // However recent: a commit made half a minute before the launch, in a session
+        // that is still live.
+        let justBefore = Date().addingTimeInterval(-30)
+        try fixtures.append(bash("git commit -m 'missed'", id: "missed", at: justBefore), to: "p/a.jsonl")
+
+        let engine = launch(rules: [commits])
+        waitUntil("the feed is loaded") { store.events.count == 1 }
+        store.onScanQueue {}
+        XCTAssertEqual(store.events.map(\.id), ["missed"])
+        XCTAssertEqual(engine.dispatched, [])
+    }
+
+    func testWhatIsWrittenWhileTheFirstReadRunsStillNotifies() throws {
+        // A first read takes seconds on a long history. A record written during it can be
+        // read by it, before the watcher's report is: it is newer than the launch, which
+        // a timestamp a little ahead of the clock stands for here.
+        let duringTheRead = Date().addingTimeInterval(30)
+        try fixtures.append(bash("git commit -m 'early'", id: "early", at: duringTheRead), to: "p/a.jsonl")
+
+        let engine = launch(rules: [commits])
+        waitUntil("the feed is loaded") { store.events.count == 1 }
+        store.onScanQueue {}
+        XCTAssertEqual(engine.dispatched, ["Commits: early"])
+    }
+
+    func testRefreshDoesNotNotify() throws {
+        let twoDaysAgo = Date().addingTimeInterval(-2 * 86_400)
+        let file = try fixtures.append(bash("git commit -m 'then'", id: "old", at: twoDaysAgo),
+                                       to: "p/a.jsonl", modified: twoDaysAgo)
+        let engine = launch(rules: [commits])
+        waitUntil("the feed is loaded") { store.events.count == 1 }
+        try fixtures.append(bash("git commit -m 'now'", id: "new", at: Date()), to: "p/a.jsonl")
+        watcher.report([file.path])
+        waitUntil("the append is shown") { store.events.count == 2 }
+        store.onScanQueue {}
+        XCTAssertEqual(engine.dispatched, ["Commits: new"])
+
+        // This engine remembers nothing, so a repeat would show.
+        store.refresh()
+        store.onScanQueue {}
+        settle()
+        XCTAssertEqual(store.events.map(\.id), ["new", "old"], "the feed is rebuilt")
+        XCTAssertEqual(engine.dispatched, ["Commits: new"], "and nothing in it is sent again")
     }
 }

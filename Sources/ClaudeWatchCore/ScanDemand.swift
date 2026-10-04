@@ -3,7 +3,7 @@ import Combine
 
 /// What `ScanDemand` switches on and off: a `TranscriptStore` in the app.
 public protocol ScanControl: AnyObject {
-    func start(announceBacklog: Bool)
+    func start()
     func stop()
 }
 
@@ -29,21 +29,18 @@ public final class ScanDemand {
 
     private func drive<I: Publisher, R: Publisher>(_ store: ScanControl, icon: I, rules: R)
     where I.Output == Bool, I.Failure == Never, R.Output == [NotificationRule], R.Failure == Never {
-        // The first value arrives during `sink`, at launch. A source needed from launch
-        // announces what it finds, as it always has. One that becomes needed later catches
-        // up quietly: no rule was waiting for that history when it happened.
-        var atLaunch = true
+        // The first value arrives during `sink`, at launch. Whenever a store starts, then
+        // or later, it catches up on history without announcing it.
         icon.combineLatest(rules)
             .map { Self.isNeeded(iconInserted: $0, rules: $1) }
             .removeDuplicates()
             .sink { [weak store] needed in
                 if needed {
-                    store?.start(announceBacklog: atLaunch)
+                    store?.start()
                 } else {
                     store?.stop()
                 }
             }
             .store(in: &cancellables)
-        atLaunch = false
     }
 }
