@@ -43,6 +43,12 @@ public final class SessionTracker {
     private var sessions: [String: State] = [:]
     private var doneQueue: [SessionStatus] = []      // genuine working → waiting transitions
 
+    /// What each Codex transcript's `session_meta` said, for the records that follow it.
+    /// A session cannot be found by its transcript's path instead: its sub-agents and
+    /// reviews write transcripts of their own under the same session id. Kept once the
+    /// session is forgotten, because a file's first record is not read a second time.
+    private var codexFiles: [String: CodexTranscriptParser.FileContext] = [:]
+
     /// What a transcript's path says about it. Asked for every record, so the answer for
     /// the file being read is kept instead of searching the path again each time.
     private var pathKind: (path: String, isCodex: Bool, isSubagent: Bool)?
@@ -63,11 +69,14 @@ public final class SessionTracker {
         ingest(record: obj, path: path)
     }
 
-    /// The same, for a line that has already been parsed.
-    func ingest(record obj: [String: Any], path: String) {
+    /// The same, for a line that has already been parsed. `codexContext` is what the
+    /// caller knows of a Codex transcript's `session_meta`. The scanner has it even for a
+    /// file whose first record never came through here: one it read for the feed alone,
+    /// or skipped, before the session was written to again.
+    func ingest(record obj: [String: Any], path: String, codexContext: CodexTranscriptParser.FileContext? = nil) {
         let pathKind = kind(of: path)
         if pathKind.isCodex {
-            ingestCodex(obj: obj, path: path)
+            ingestCodex(obj: obj, path: path, known: codexContext)
             return
         }
 
@@ -131,18 +140,14 @@ public final class SessionTracker {
         sessions[sessionId] = s
     }
 
-    private func ingestCodex(obj: [String: Any], path: String) {
+    private func ingestCodex(obj: [String: Any], path: String, known: CodexTranscriptParser.FileContext?) {
         let ts = parseDate(obj["timestamp"] as? String)
 
-        if obj["type"] as? String == "session_meta",
-           let payload = obj["payload"] as? [String: Any] {
-            let sessionId = payload["session_id"] as? String ?? payload["id"] as? String ?? codexSessionId(from: path)
-            var s = sessions[sessionId] ?? State()
-            if let cwd = payload["cwd"] as? String, !cwd.isEmpty {
-                s.cwd = cwd
-                s.projectName = (cwd as NSString).lastPathComponent
-            }
-            s.transcriptPath = path
+        var file = known ?? codexFiles[path] ?? CodexTranscriptParser.FileContext()
+        if file.read(sessionMeta: obj) {
+            if known == nil { codexFiles[path] = file }
+            let sessionId = file.sessionId(forTranscriptAt: path)
+            var s = codexState(of: sessionId, file: file, path: path)
             if let ts, ts > s.lastActivity {
                 s.lastActivity = ts
                 s.lastAssistantActivity = ts
@@ -155,9 +160,8 @@ public final class SessionTracker {
 
         if obj["type"] as? String == "event_msg",
            payload["type"] as? String == "task_complete" {
-            let sessionId = codexKnownSessionId(for: path) ?? codexSessionId(from: path)
-            var s = sessions[sessionId] ?? State()
-            if s.transcriptPath.isEmpty { s.transcriptPath = path }
+            let sessionId = file.sessionId(forTranscriptAt: path)
+            var s = codexState(of: sessionId, file: file, path: path)
             if let ts, ts > s.lastActivity { s.lastActivity = ts }
             s.lastStopReason = "end_turn"
             sessions[sessionId] = s
@@ -168,10 +172,10 @@ public final class SessionTracker {
               let payloadType = payload["type"] as? String
         else { return }
 
-        let turnId = ((payload["internal_chat_message_metadata_passthrough"] as? [String: Any])?["turn_id"] as? String)
-        let sessionId = codexKnownSessionId(for: path) ?? turnId ?? codexSessionId(from: path)
-        var s = sessions[sessionId] ?? State()
-        if s.transcriptPath.isEmpty { s.transcriptPath = path }
+        // Never the record's turn id: a session has many turns, and `codex resume` takes
+        // the session.
+        let sessionId = file.sessionId(forTranscriptAt: path)
+        var s = codexState(of: sessionId, file: file, path: path)
         if s.projectName == "unknown" {
             s.projectName = (path as NSString).deletingPathExtension.components(separatedBy: "/").last ?? "Codex"
         }
@@ -371,13 +375,17 @@ public final class SessionTracker {
         return start == utf8.endIndex ? nil : String(text[start...])
     }
 
-    private func codexSessionId(from path: String) -> String {
-        ((path as NSString).deletingPathExtension as NSString).lastPathComponent
-            .replacingOccurrences(of: "rollout-", with: "")
-    }
-
-    private func codexKnownSessionId(for path: String) -> String? {
-        sessions.first { $0.value.transcriptPath == path }?.key
+    /// The state so far of Codex session `id`, with what the transcript at `path` says
+    /// about itself filled in. The session's own transcript is the one to open, and its
+    /// folder the one to resume in; a sub-agent's stand in only until that one is seen.
+    private func codexState(of id: String, file: CodexTranscriptParser.FileContext, path: String) -> State {
+        var s = sessions[id] ?? State()
+        if !file.isSubagent || s.transcriptPath.isEmpty { s.transcriptPath = path }
+        if !file.cwd.isEmpty, file.cwd != s.cwd, !file.isSubagent || s.cwd.isEmpty {
+            s.cwd = file.cwd
+            s.projectName = (file.cwd as NSString).lastPathComponent
+        }
+        return s
     }
 
     private func idleString(_ seconds: TimeInterval) -> String {

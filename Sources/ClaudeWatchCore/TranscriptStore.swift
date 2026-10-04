@@ -237,7 +237,9 @@ public final class TranscriptStore: ObservableObject {
         var fresh: [CommandEvent] = []
         let onRecord: ([String: Any], String) -> Void = { [scanner, tracker] record, path in
             fresh.append(contentsOf: scanner.events(fromRecord: record, transcriptPath: path))
-            tracker.ingest(record: record, path: path)
+            // The tracker may never have been given this file's first record (see `load`),
+            // which says whose session it is. The scanner knows either way.
+            tracker.ingest(record: record, path: path, codexContext: scanner.codexContext(for: path))
         }
 
         if (needsListing || !watching) && now.timeIntervalSince(lastListing) >= listingSpacing {
@@ -297,7 +299,7 @@ public final class TranscriptStore: ObservableObject {
             if live {
                 scanner.read([file], offsets: &offsets) { [scanner, tracker] record, path in
                     fresh.append(contentsOf: scanner.events(fromRecord: record, transcriptPath: path))
-                    tracker.ingest(record: record, path: path)
+                    tracker.ingest(record: record, path: path, codexContext: scanner.codexContext(for: path))
                 }
             } else if accumulated.count < maxEvents
                         || file.modified.addingTimeInterval(clockSlack) >= accumulated[maxEvents - 1].timestamp {

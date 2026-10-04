@@ -159,6 +159,86 @@ final class SessionTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.drainDone().map(\.statusText), ["finished: swift test"])
     }
 
+    // MARK: - Codex: which session a record belongs to
+
+    private func codexCommand(_ command: String, id: String, turn: String, ts: String) -> Substring {
+        Substring(TranscriptFixtures.codexScript(#"text(await tools.exec_command({cmd:"\#(command)"}));"#, id: id, turn: turn, at: date(ts)))
+    }
+
+    func testCodexSessionIsNotNamedAfterATurnWhenItsFirstRecordWasNeverSeen() {
+        // Records appended to a transcript whose start was never read here: there has been
+        // no `session_meta` to say which session they belong to.
+        let path = "/Users/x/.codex/sessions/2026/10/02/rollout-2026-10-02T20-50-12-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000.jsonl"
+        let tracker = SessionTracker()
+        tracker.ingest(line: codexCommand("git status", id: "c1", turn: "turn-1", ts: "2026-10-02T09:50:41.000Z"), path: path)
+        tracker.ingest(line: Substring(TranscriptFixtures.codexScriptOutput("c1", at: date("2026-10-02T09:50:43.000Z"))), path: path)
+        tracker.ingest(line: codexTaskComplete(ts: "2026-10-02T09:50:44.000Z"), path: path)
+        tracker.ingest(line: codexCommand("swift build", id: "c2", turn: "turn-2", ts: "2026-10-02T09:51:00.000Z"), path: path)
+
+        let sessions = tracker.snapshot(now: date("2026-10-02T09:51:01.000Z"))
+        XCTAssertEqual(sessions.map(\.id), ["0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"],
+                       "one session, under the id in the file name (what `codex resume` takes), not under a turn")
+        XCTAssertEqual(sessions.first?.statusText, "running: swift build")
+
+        // The same whichever record comes first.
+        let other = SessionTracker()
+        other.ingest(line: codexTaskComplete(ts: "2026-10-02T09:50:44.000Z"), path: path)
+        other.ingest(line: codexCommand("swift build", id: "c2", turn: "turn-2", ts: "2026-10-02T09:51:00.000Z"), path: path)
+        XCTAssertEqual(other.snapshot(now: date("2026-10-02T09:51:01.000Z")).map(\.id), ["0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"])
+    }
+
+    func testCodexSubagentTranscriptDoesNotTakeTheSessionFromItsOwnTranscript() {
+        // A session that starts a review, as most do: the review writes a transcript of its
+        // own, under the same session id. The session's own transcript carries on after it.
+        let tracker = codexTracker()
+        let review = "/Users/x/.codex/sessions/2026/10/02/rollout-2026-10-02T20-50-20-review.jsonl"
+        tracker.ingest(line: Substring(TranscriptFixtures.codexMeta(session: "cs", thread: "review-thread", cwd: "/Users/x/elsewhere", at: date("2026-10-02T09:50:20.000Z"))),
+                       path: review)
+        tracker.ingest(line: codexCommand("cat diff.patch", id: "r1", turn: "turn-r", ts: "2026-10-02T09:50:21.000Z"), path: review)
+        tracker.ingest(line: Substring(TranscriptFixtures.codexScriptOutput("r1", at: date("2026-10-02T09:50:22.000Z"))), path: review)
+        tracker.ingest(line: codexCommand("git status", id: "c1", turn: "turn-2", ts: "2026-10-02T09:50:41.000Z"), path: codexPath)
+
+        let sessions = tracker.snapshot(now: date("2026-10-02T09:50:42.000Z"))
+        XCTAssertEqual(sessions.map(\.id), ["cs"], "one session, not a second one named after the turn")
+        XCTAssertEqual(sessions.first?.statusText, "running: git status")
+        XCTAssertEqual(sessions.first?.transcriptPath, codexPath, "the session's own transcript is the one to open")
+        XCTAssertEqual(sessions.first?.cwd, "/Users/x/project")
+        XCTAssertEqual(sessions.first?.projectName, "project")
+    }
+
+    func testCodexSubagentTranscriptStandsInUntilTheSessionsOwnIsSeen() {
+        let tracker = SessionTracker()
+        let review = "/Users/x/.codex/sessions/2026/10/02/rollout-2026-10-02T20-50-20-review.jsonl"
+        tracker.ingest(line: Substring(TranscriptFixtures.codexMeta(session: "cs", thread: "review-thread", cwd: "/Users/x/elsewhere", at: date("2026-10-02T09:50:20.000Z"))),
+                       path: review)
+        var sessions = tracker.snapshot(now: date("2026-10-02T09:50:21.000Z"))
+        XCTAssertEqual(sessions.map(\.id), ["cs"])
+        XCTAssertEqual(sessions.first?.transcriptPath, review)
+        XCTAssertEqual(sessions.first?.projectName, "elsewhere")
+
+        tracker.ingest(line: Substring(TranscriptFixtures.codexMeta(session: "cs", cwd: "/Users/x/project", at: date("2026-10-02T09:50:30.000Z"))),
+                       path: codexPath)
+        sessions = tracker.snapshot(now: date("2026-10-02T09:50:31.000Z"))
+        XCTAssertEqual(sessions.map(\.id), ["cs"])
+        XCTAssertEqual(sessions.first?.transcriptPath, codexPath)
+        XCTAssertEqual(sessions.first?.projectName, "project")
+    }
+
+    func testCodexSessionForgottenAndThenWrittenToAgainKeepsItsId() {
+        let tracker = codexTracker()
+        tracker.ingest(line: codexCommand("git status", id: "c1", turn: "turn-1", ts: "2026-10-02T09:50:41.000Z"), path: codexPath)
+        tracker.ingest(line: Substring(TranscriptFixtures.codexScriptOutput("c1", at: date("2026-10-02T09:50:43.000Z"))), path: codexPath)
+        XCTAssertEqual(tracker.snapshot(now: date("2026-10-02T09:51:00.000Z")).map(\.id), ["cs"])
+        XCTAssertEqual(tracker.snapshot(now: date("2026-10-04T10:00:00.000Z")), [], "idle for longer than the eviction horizon")
+
+        // Picked up again two days later: only the new records are read.
+        tracker.ingest(line: codexCommand("swift test", id: "c2", turn: "turn-2", ts: "2026-10-04T10:00:01.000Z"), path: codexPath)
+        let sessions = tracker.snapshot(now: date("2026-10-04T10:00:02.000Z"))
+        XCTAssertEqual(sessions.map(\.id), ["cs"])
+        XCTAssertEqual(sessions.first?.cwd, "/Users/x/project")
+        XCTAssertEqual(sessions.first?.projectName, "project")
+    }
+
     func testFirstLineMatchesSplittingOnNewlines() {
         for text in [
             "", "one", "one\ntwo", "one\n", "\n\nthree\nfour", "\n", "a\r\nb", "a\r\nb\nc",
