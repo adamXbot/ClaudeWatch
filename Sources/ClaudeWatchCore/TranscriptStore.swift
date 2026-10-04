@@ -23,7 +23,8 @@ public final class TranscriptStore: ObservableObject {
     }
 
     /// Called on the scan queue whenever new events arrive or sessions finish. The app
-    /// routes this into the notification engine. Either array may be empty.
+    /// routes this into the notification engine. Either array may be empty. History is not
+    /// news: what a start or a refresh reads goes into the feed without coming here.
     public var onActivity: ((_ newEvents: [CommandEvent], _ doneSessions: [SessionStatus]) -> Void)?
 
     private let scanner: EventScanner
@@ -94,12 +95,11 @@ public final class TranscriptStore: ObservableObject {
 
     /// Begin watching, or resume after `stop()`. Safe to call repeatedly.
     ///
-    /// The first scan after a start catches up on history. At launch its findings go to
-    /// `onActivity` like any others. Pass `announceBacklog: false` when starting later (a
-    /// source that was not needed until now), so that enabling a rule or showing an icon
-    /// does not replay old activity as fresh notifications.
-    public func start(announceBacklog: Bool = true) {
-        queue.async { self.activate(announce: announceBacklog) }
+    /// The first scan after a start catches up on history, and none of that is announced:
+    /// launching the app, enabling a rule or showing an icon does not replay old activity
+    /// as fresh notifications. `onActivity` hears of what is written from then on.
+    public func start() {
+        queue.async { self.activate() }
     }
 
     /// Stop watching. The feed is kept, and `start` picks up from where this left off.
@@ -110,18 +110,19 @@ public final class TranscriptStore: ObservableObject {
     /// Read the history once if that has not happened yet, without starting to watch it.
     public func loadIfNeeded() {
         queue.async {
-            if !self.loaded { self.load(now: Date(), announce: false) }
+            if !self.loaded { self.load(now: Date()) }
         }
     }
 
-    /// Force a re-read from scratch (used by the manual refresh button).
+    /// Force a re-read from scratch (used by the manual refresh button). It rebuilds the
+    /// feed and announces none of it again.
     public func refresh() {
         queue.async {
             self.offsets.removeAll()
             self.scanner.reset()
             self.seen.removeAll()
             self.accumulated.removeAll()
-            self.load(now: Date(), announce: true)
+            self.load(now: Date())
         }
     }
 
@@ -136,10 +137,10 @@ public final class TranscriptStore: ObservableObject {
 
     // MARK: - Lifecycle (runs on `queue`)
 
-    private func activate(announce: Bool) {
+    private func activate() {
         guard !active else { return }
         active = true
-        quietCatchUp = !announce
+        quietCatchUp = true
         // Watch before reading, so nothing written in between is missed.
         watching = watcher?.start(directories: scanner.transcriptDirectories, queue: queue) { [weak self] paths in
             self?.filesChanged(paths)
@@ -226,7 +227,7 @@ public final class TranscriptStore: ObservableObject {
 
         guard loaded else {
             quietCatchUp = false
-            load(now: now, announce: announce)
+            load(now: now)
             return
         }
 
@@ -277,7 +278,11 @@ public final class TranscriptStore: ObservableObject {
     /// It still counts as one scan: an event that appears in several transcripts is taken
     /// once, and sessions are only evaluated at the end, when every transcript of a session
     /// has been read.
-    private func load(now: Date, announce: Bool) {
+    ///
+    /// What it reads is history, and is not announced. The exception is an event newer than
+    /// `now`: it was written while this read was running, and the read got to its file
+    /// before the watcher's report could.
+    private func load(now: Date) {
         loaded = true
         let files = scanner.listFiles()
         lastListing = now
@@ -304,8 +309,8 @@ public final class TranscriptStore: ObservableObject {
                 continue
             }
             let new = merge(fresh)
-            // Announced file by file, so a long history's events are never all held at once.
-            if announce, !new.isEmpty { onActivity?(new, []) }
+            let news = new.filter { $0.timestamp >= now }
+            if !news.isEmpty { onActivity?(news, []) }
 
             // Show the feed as it fills, newest first.
             if !new.isEmpty, Date().timeIntervalSince(lastPublish) >= 0.25 {
@@ -321,7 +326,9 @@ public final class TranscriptStore: ObservableObject {
         readThisLoad = nil
         scanner.prune(offsets: &offsets, keeping: files)
 
-        finish(now: now, added: [], publishEvents: !accumulated.isEmpty, announce: announce)
+        // A session that finished while this ran is news. Only a refresh can find one: on a
+        // first read every session is a first sighting.
+        finish(now: now, added: [], publishEvents: !accumulated.isEmpty, announce: true)
     }
 
     /// Adds the events the feed does not have yet, keeps it newest-first and capped, and

@@ -80,7 +80,7 @@ final class ScanDemandTests: XCTestCase {
 
     private final class Recorder: ScanControl {
         var calls: [String] = []
-        func start(announceBacklog: Bool) { calls.append(announceBacklog ? "start" : "start quietly") }
+        func start() { calls.append("start") }
         func stop() { calls.append("stop") }
     }
 
@@ -114,7 +114,7 @@ final class ScanDemandTests: XCTestCase {
         let claude = Recorder(), codex = Recorder()
         let demand = makeDemand(claude: claude, codex: codex)
 
-        XCTAssertEqual(claude.calls, ["start"], "shown at launch: starts, announcing as before")
+        XCTAssertEqual(claude.calls, ["start"], "shown at launch: starts")
         XCTAssertEqual(codex.calls, ["stop"], "hidden with no rules: not scanned")
         withExtendedLifetime(demand) {}
     }
@@ -131,7 +131,7 @@ final class ScanDemandTests: XCTestCase {
         withExtendedLifetime(demand) {}
     }
 
-    func testBecomingNeededLaterStartsQuietlyAndStopsAgain() {
+    func testBecomingNeededLaterStartsAndStopsAgain() {
         settings.claudeVisibility = .automatic
         settings.codexVisibility = .hide
         let claude = Recorder(), codex = Recorder()
@@ -139,18 +139,18 @@ final class ScanDemandTests: XCTestCase {
         XCTAssertEqual(claude.calls, ["stop"])
 
         hasClaude.send(true)                        // transcripts found: the icon appears
-        XCTAssertEqual(claude.calls, ["stop", "start quietly"])
+        XCTAssertEqual(claude.calls, ["stop", "start"])
 
         settings.rules = [NotificationRule(name: "done", trigger: .sessionDone)]
-        XCTAssertEqual(claude.calls, ["stop", "start quietly"], "already running")
-        XCTAssertEqual(codex.calls, ["stop", "start quietly"], "a rule needs the hidden source as well")
+        XCTAssertEqual(claude.calls, ["stop", "start"], "already running")
+        XCTAssertEqual(codex.calls, ["stop", "start"], "a rule needs the hidden source as well")
 
         settings.rules[0].isEnabled = false
-        XCTAssertEqual(codex.calls, ["stop", "start quietly", "stop"])
-        XCTAssertEqual(claude.calls, ["stop", "start quietly"], "still shown")
+        XCTAssertEqual(codex.calls, ["stop", "start", "stop"])
+        XCTAssertEqual(claude.calls, ["stop", "start"], "still shown")
 
         settings.claudeVisibility = .hide
-        XCTAssertEqual(claude.calls, ["stop", "start quietly", "stop"])
+        XCTAssertEqual(claude.calls, ["stop", "start", "stop"])
         withExtendedLifetime(demand) {}
     }
 }
