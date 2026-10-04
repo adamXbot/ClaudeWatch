@@ -305,6 +305,13 @@ public final class EventScanner {
         }
     }
 
+    /// What the Codex transcript at `path` has said about itself, as far as it has been
+    /// read here or was recovered from a part that was skipped (see `resume`). Nil for a
+    /// Claude transcript.
+    func codexContext(for path: String) -> CodexTranscriptParser.FileContext? {
+        source == .codex ? codexContexts[path] : nil
+    }
+
     func events(fromRecord record: [String: Any], transcriptPath path: String) -> [CommandEvent] {
         switch source {
         case .claude:

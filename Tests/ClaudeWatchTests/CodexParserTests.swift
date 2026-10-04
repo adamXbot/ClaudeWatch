@@ -85,6 +85,50 @@ final class CodexParserTests: XCTestCase {
         XCTAssertEqual(stdin("", id: "call_poll").map(\.primary), ["(stdin)"], "recorded on its own, a poll is still a row")
     }
 
+    // MARK: - Which session a file belongs to
+
+    func testFileWithoutSessionMetaGoesByTheIdInItsName() {
+        let id = "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"
+        for (path, expected) in [
+            ("/Users/x/.codex/sessions/2026/10/02/rollout-2026-10-02T20-50-12-\(id).jsonl", id),
+            // One real transcript is named like this. Its `session_meta` has the first id.
+            ("/Users/x/.codex/sessions/2026/09/23/rollout-2026-09-23T18-50-48-\(id)_01a0cd75-daba-7fb2-a508-080b133c14f7.jsonl", id),
+            ("/tmp/rollout-2026-07-02T11-59-07-abc.jsonl", "2026-07-02T11-59-07-abc"),
+            ("/tmp/rollout-\(id).jsonl", id),
+            ("/tmp/notes.jsonl", "notes"),
+        ] {
+            XCTAssertEqual(CodexTranscriptParser.sessionIdFromPath(path), expected, path)
+        }
+
+        var context = CodexTranscriptParser.FileContext()
+        let events = CodexTranscriptParser.events(fromLine: execLine(#"text(await tools.exec_command({cmd:"ls"}));"#),
+                                                  transcriptPath: scriptPath, context: &context)
+        XCTAssertEqual(events.map(\.sessionId), [id], "the id alone, which `codex resume` takes, and not the turn")
+    }
+
+    func testSubagentTranscriptBelongsToTheSessionThatStartedIt() {
+        // A sub-agent's transcript opens with its own `session_meta` and then repeats its
+        // parent's. Laid out as Codex 0.159 writes them, without the keys nothing reads.
+        let session = "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"
+        let own = Substring(#"{"timestamp":"2026-10-02T09:55:00.004Z","ordinal":0,"type":"session_meta","payload":{"session_id":"\#(session)","id":"0199aaaa-cccc-7ddd-8eee-ffff00001111","parent_thread_id":"\#(session)","timestamp":"2026-10-02T09:55:00.001Z","cwd":"/Users/x/project","source":{"subagent":{"thread_spawn":{"parent_thread_id":"\#(session)","depth":1}}}}}"#)
+        let parents = Substring(#"{"timestamp":"2026-10-02T09:55:00.004Z","ordinal":1,"type":"session_meta","payload":{"session_id":"\#(session)","id":"\#(session)","timestamp":"2026-10-02T09:50:12.001Z","cwd":"/Users/x/project","source":"vscode"}}"#)
+        let path = "/Users/x/.codex/sessions/2026/10/02/rollout-2026-10-02T20-55-00-0199aaaa-cccc-7ddd-8eee-ffff00001111.jsonl"
+
+        var context = CodexTranscriptParser.FileContext()
+        XCTAssertFalse(context.isSubagent)
+        XCTAssertEqual(CodexTranscriptParser.events(fromLine: own, transcriptPath: path, context: &context), [])
+        XCTAssertEqual(context.sessionId, session, "the session, not the thread the file is named after")
+        XCTAssertTrue(context.isSubagent)
+
+        XCTAssertEqual(CodexTranscriptParser.events(fromLine: parents, transcriptPath: path, context: &context), [])
+        XCTAssertEqual(context.sessionId, session)
+        XCTAssertTrue(context.isSubagent, "the parent's record does not make it the session's own transcript")
+
+        var ownContext = CodexTranscriptParser.FileContext()
+        _ = CodexTranscriptParser.events(fromLine: metaLine, transcriptPath: scriptPath, context: &ownContext)
+        XCTAssertFalse(ownContext.isSubagent, "a session's own transcript: the two ids are the same")
+    }
+
     // MARK: - Code mode: an `exec` record whose input is a script
 
     private let scriptPath = "/Users/x/.codex/sessions/2026/10/02/rollout-2026-10-02T20-50-12-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000.jsonl"

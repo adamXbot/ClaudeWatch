@@ -58,11 +58,16 @@ struct TranscriptFixtures {
         ])
     }
 
-    static func codexMeta(session: String, cwd: String, at date: Date = Date()) -> String {
-        json([
-            "timestamp": iso.string(from: date), "type": "session_meta",
-            "payload": ["session_id": session, "cwd": cwd],
-        ])
+    /// The first record of a Codex transcript. `thread` is who wrote the file when that is
+    /// not the session itself: a sub-agent or a review the session started, which gets a
+    /// transcript of its own.
+    static func codexMeta(session: String, thread: String? = nil, cwd: String, at date: Date = Date()) -> String {
+        var payload: [String: Any] = ["session_id": session, "id": thread ?? session, "cwd": cwd]
+        if thread != nil {
+            payload["parent_thread_id"] = session
+            payload["source"] = ["subagent": ["other": "guardian"]]
+        }
+        return json(["timestamp": iso.string(from: date), "ordinal": 0, "type": "session_meta", "payload": payload])
     }
 
     static func codexExec(_ command: String, id: String, at date: Date = Date()) -> String {
@@ -77,13 +82,13 @@ struct TranscriptFixtures {
 
     /// A Codex "code mode" record as versions since mid-2026 write it: the tool is `exec`
     /// and its input is a JavaScript program that makes the real calls.
-    static func codexScript(_ script: String, id: String, ordinal: Int = 1, at date: Date = Date()) -> String {
+    static func codexScript(_ script: String, id: String, ordinal: Int = 1, turn: String = "turn-1", at date: Date = Date()) -> String {
         json([
             "timestamp": iso.string(from: date), "ordinal": ordinal, "type": "response_item",
             "payload": [
                 "type": "custom_tool_call", "id": "ctc_\(id)", "status": "completed", "call_id": id,
                 "name": "exec", "input": script,
-                "internal_chat_message_metadata_passthrough": ["turn_id": "turn-1", "create_time": 1_790_934_637.2],
+                "internal_chat_message_metadata_passthrough": ["turn_id": turn, "create_time": 1_790_934_637.2],
             ],
         ])
     }

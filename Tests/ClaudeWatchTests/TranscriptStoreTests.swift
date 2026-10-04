@@ -33,10 +33,11 @@ final class TranscriptStoreTests: XCTestCase {
     /// few intervals, so what `scanner.work` counts then depends on how long the test took.
     private func makeStore(
         source: TranscriptSource = .claude,
+        root: URL? = nil,
         maxEvents: Int = 2000,
         watcher: TranscriptWatching? = ManualWatcher()
     ) -> (store: TranscriptStore, scanner: EventScanner, announced: Announcements) {
-        let scanner = EventScanner(source: source, root: fixtures.root)
+        let scanner = EventScanner(source: source, root: root ?? fixtures.root)
         let store = TranscriptStore(scanner: scanner, interval: 0.02, maxEvents: maxEvents, watcher: watcher)
         let announced = Announcements()
         store.onActivity = { events, _ in announced.add(events) }
@@ -222,6 +223,85 @@ final class TranscriptStoreTests: XCTestCase {
         try fixtures.append(bash("three", id: "t3", at: daysAgo(1)), to: "p/b.jsonl")
         waitUntil("the new file is found") { store.events.count == 3 }
         XCTAssertEqual(store.events.map(\.id), ["t3", "t2", "t1"])
+    }
+
+    // MARK: - Codex sessions
+
+    private func codexCommand(_ command: String, id: String, turn: String, at date: Date) -> String {
+        TranscriptFixtures.codexScript(#"text(await tools.exec_command({cmd:"\#(command)"}));"#, id: id, turn: turn, at: date) + "\n"
+    }
+
+    func testOldCodexSessionWrittenToAgainIsTrackedUnderItsSessionId() throws {
+        // Two sessions that ended days ago. The first read takes the newer one's events
+        // without tracking it, and never opens the older one: the feed is full by then.
+        let recent = ".codex/sessions/2026/10/02/rollout-2026-10-02T09-00-00-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001.jsonl"
+        let older = ".codex/sessions/2026/09/28/rollout-2026-09-28T09-00-00-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0002.jsonl"
+        try fixtures.append(
+            TranscriptFixtures.codexMeta(session: "recent-session", cwd: "/work/app", at: daysAgo(2)) + "\n"
+                + TranscriptFixtures.codexExec("make", id: "old1", at: daysAgo(2)) + "\n",
+            to: recent, modified: daysAgo(2)
+        )
+        try fixtures.append(
+            TranscriptFixtures.codexMeta(session: "older-session", cwd: "/work/site", at: daysAgo(6)) + "\n"
+                + TranscriptFixtures.codexExec("ls", id: "old2", at: daysAgo(6)) + "\n",
+            to: older, modified: daysAgo(6)
+        )
+
+        let watcher = ManualWatcher()
+        let (store, scanner, _) = makeStore(source: .codex, root: fixtures.file(".codex"), maxEvents: 1, watcher: watcher)
+        store.start()
+        waitUntil("the feed is loaded") { store.events.map(\.id) == ["old1"] }
+        store.onScanQueue {}
+        XCTAssertEqual(scanner.work.filesRead, 1, "the older session is not opened")
+        XCTAssertEqual(store.sessions, [], "neither is recent enough to track")
+
+        // Both are picked up again. Only the new records reach the tracker, and neither
+        // file's `session_meta` is among them.
+        try fixtures.append(codexCommand("swift build", id: "new1", turn: "turn-1", at: Date()), to: recent)
+        try fixtures.append(codexCommand("npm test", id: "new2", turn: "turn-2", at: Date()), to: older)
+        watcher.report([fixtures.file(recent).path, fixtures.file(older).path])
+        waitUntil("both sessions are shown") { store.sessions.count == 2 }
+
+        XCTAssertEqual(Set(store.sessions.map(\.id)), ["recent-session", "older-session"],
+                       "the session ids `codex resume` takes, not the turns'")
+        XCTAssertEqual(Set(store.sessions.map(\.projectName)), ["app", "site"])
+        XCTAssertEqual(Set(store.sessions.map(\.cwd)), ["/work/app", "/work/site"])
+    }
+
+    func testCodexSessionWithAReviewTranscriptIsOneSession() throws {
+        let session = "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001"
+        let own = ".codex/sessions/2026/10/04/rollout-2026-10-04T09-00-00-\(session).jsonl"
+        let review = ".codex/sessions/2026/10/04/rollout-2026-10-04T09-05-00-0199aaaa-bbbb-7ccc-8ddd-eeeeffff0002.jsonl"
+        let started = now.addingTimeInterval(-600)
+        try fixtures.append(
+            TranscriptFixtures.codexMeta(session: session, cwd: "/work/app", at: started) + "\n"
+                + codexCommand("git diff", id: "c1", turn: "turn-1", at: started.addingTimeInterval(10))
+                + TranscriptFixtures.codexScriptOutput("c1", at: started.addingTimeInterval(11)) + "\n",
+            to: own, modified: started.addingTimeInterval(11)
+        )
+
+        let watcher = ManualWatcher()
+        let (store, _, _) = makeStore(source: .codex, root: fixtures.file(".codex"), watcher: watcher)
+        store.start()
+        waitUntil("the session is shown") { !store.sessions.isEmpty }
+        XCTAssertEqual(store.sessions.map(\.id), [session])
+
+        // The session starts a review, which writes a transcript of its own under the same
+        // session id, and then carries on in its own transcript.
+        try fixtures.append(
+            TranscriptFixtures.codexMeta(session: session, thread: "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0002", cwd: "/work/app") + "\n"
+                + codexCommand("cat diff.patch", id: "r1", turn: "turn-r", at: Date())
+                + TranscriptFixtures.codexScriptOutput("r1") + "\n",
+            to: review
+        )
+        watcher.report([fixtures.file(review).path])
+        store.onScanQueue {}
+        try fixtures.append(codexCommand("swift build", id: "c2", turn: "turn-2", at: Date()), to: own)
+        watcher.report([fixtures.file(own).path])
+        waitUntil("the new command is running") { store.sessions.contains { $0.statusText == "running: swift build" } }
+
+        XCTAssertEqual(store.sessions.map(\.id), [session], "still one session, under its own id")
+        XCTAssertEqual(store.sessions.first?.transcriptPath, fixtures.file(own).path, "and its own transcript is the one to open")
     }
 
     // MARK: - Starting, stopping, pausing

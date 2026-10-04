@@ -1,12 +1,47 @@
 import Foundation
 
 public enum CodexTranscriptParser {
+    /// What a transcript's `session_meta` says about the file. The feed and the session
+    /// tracker both take a Codex file's session from here, so they cannot disagree.
     public struct FileContext {
         public var sessionId = ""
         public var cwd = ""
+        /// The file was written by a sub-agent or a review that the session started. Each
+        /// gets a transcript of its own, under the session's id.
+        public var isSubagent = false
         public init(sessionId: String = "", cwd: String = "") {
             self.sessionId = sessionId
             self.cwd = cwd
+        }
+
+        /// Takes in a `session_meta` record. Returns false for any other record, which is
+        /// left for the caller.
+        mutating func read(sessionMeta record: [String: Any]) -> Bool {
+            guard record["type"] as? String == "session_meta",
+                  let payload = record["payload"] as? [String: Any]
+            else { return false }
+            // `session_id` is the session and `id` is the thread that wrote this file. They
+            // are the same in the session's own transcript.
+            let session = payload["session_id"] as? String
+            let thread = payload["id"] as? String
+            if let id = session ?? thread {
+                sessionId = id
+            }
+            // A sub-agent's transcript goes on to repeat its parent's `session_meta`, so a
+            // later record does not take this back.
+            if let session, let thread, session != thread {
+                isSubagent = true
+            }
+            if let cwd = payload["cwd"] as? String {
+                self.cwd = cwd
+            }
+            return true
+        }
+
+        /// The session that the transcript at `path` belongs to: the one its `session_meta`
+        /// named or, when that was never seen, the id in the file's name.
+        func sessionId(forTranscriptAt path: String) -> String {
+            sessionId.isEmpty ? CodexTranscriptParser.sessionIdFromPath(path) : sessionId
         }
     }
 
@@ -28,16 +63,7 @@ public enum CodexTranscriptParser {
 
     /// The same, for a line that has already been parsed.
     static func events(fromRecord obj: [String: Any], transcriptPath: String, context: inout FileContext) -> [CommandEvent] {
-        if obj["type"] as? String == "session_meta",
-           let payload = obj["payload"] as? [String: Any] {
-            if let id = payload["session_id"] as? String ?? payload["id"] as? String {
-                context.sessionId = id
-            }
-            if let cwd = payload["cwd"] as? String {
-                context.cwd = cwd
-            }
-            return []
-        }
+        if context.read(sessionMeta: obj) { return [] }
 
         guard obj["type"] as? String == "response_item",
               let payload = obj["payload"] as? [String: Any]
@@ -46,7 +72,7 @@ public enum CodexTranscriptParser {
         guard !actions.isEmpty else { return [] }
 
         let timestamp = parseDate(obj["timestamp"] as? String)
-        let sessionId = context.sessionId.isEmpty ? sessionIdFromPath(transcriptPath) : context.sessionId
+        let sessionId = context.sessionId(forTranscriptAt: transcriptPath)
         let cwd = context.cwd
         let project = projectName(cwd: cwd, transcriptPath: transcriptPath)
         let callId = payload["call_id"] as? String ?? payload["id"] as? String ?? UUID().uuidString
@@ -229,9 +255,16 @@ public enum CodexTranscriptParser {
             .replacingOccurrences(of: "rollout-", with: "") ?? "Codex"
     }
 
-    private static func sessionIdFromPath(_ path: String) -> String {
+    /// The id in a transcript's file name, `rollout-<started>-<id>.jsonl`. `codex resume`
+    /// takes the id alone, so the time in front of it is left out. A name that is laid out
+    /// differently is used whole.
+    static func sessionIdFromPath(_ path: String) -> String {
         let base = (path as NSString).deletingPathExtension
-        return (base as NSString).lastPathComponent.replacingOccurrences(of: "rollout-", with: "")
+        let name = (base as NSString).lastPathComponent.replacingOccurrences(of: "rollout-", with: "")
+        // "2026-10-02T20-50-12-", then the id.
+        let id = String(name.dropFirst(20).prefix(36))
+        guard name.prefix(20).last == "-", UUID(uuidString: id) != nil else { return name }
+        return id
     }
 
     private static func visibleStdin(_ s: String) -> String {

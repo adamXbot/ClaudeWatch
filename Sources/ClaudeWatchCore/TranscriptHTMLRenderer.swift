@@ -71,8 +71,7 @@ public enum TranscriptHTMLRenderer {
     private static func renderCodex(transcriptPath: String, highlightId: String) -> String? {
         guard let text = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return nil }
 
-        var sessionId = ""
-        var cwd = ""
+        var file = CodexTranscriptParser.FileContext()
         var body = ""
 
         for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
@@ -82,11 +81,7 @@ public enum TranscriptHTMLRenderer {
             else { continue }
 
             let time = obj["timestamp"] as? String ?? ""
-            if obj["type"] as? String == "session_meta" {
-                sessionId = payload["session_id"] as? String ?? payload["id"] as? String ?? sessionId
-                cwd = payload["cwd"] as? String ?? cwd
-                continue
-            }
+            if file.read(sessionMeta: obj) { continue }
 
             switch payload["type"] as? String {
             case "user_message":
@@ -124,14 +119,14 @@ public enum TranscriptHTMLRenderer {
         <header>
           <div class="title">Codex thread</div>
           <div class="meta">
-            <span><b>project</b> \(esc((cwd as NSString).lastPathComponent))</span>
-            <span><b>session</b> <code>\(esc(sessionId))</code></span>
+            <span><b>project</b> \(esc((file.cwd as NSString).lastPathComponent))</span>
+            <span><b>session</b> <code>\(esc(file.sessionId))</code></span>
           </div>
           <div class="path">\(esc(transcriptPath))</div>
         </header>
         """
 
-        return page(title: "Codex thread — \((cwd as NSString).lastPathComponent)",
+        return page(title: "Codex thread — \((file.cwd as NSString).lastPathComponent)",
                     bodyHTML: header + body)
     }
 
