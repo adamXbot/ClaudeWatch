@@ -96,6 +96,69 @@ final class SessionTrackerTests: XCTestCase {
         XCTAssertTrue(tracker.drainDone().isEmpty, "a dead/timed-out tool must not report 'finished'")
     }
 
+    // MARK: - Codex
+
+    private let codexPath = "/Users/x/.codex/sessions/2026/10/02/rollout-2026-10-02T20-50-12-abc.jsonl"
+
+    private func codexTracker() -> SessionTracker {
+        let tracker = SessionTracker()
+        tracker.ingest(line: Substring(TranscriptFixtures.codexMeta(session: "cs", cwd: "/Users/x/project", at: date("2026-10-02T09:50:00.000Z"))),
+                       path: codexPath)
+        return tracker
+    }
+
+    private func codexTaskComplete(ts: String) -> Substring {
+        line(["timestamp": ts, "type": "event_msg", "payload": ["type": "task_complete"]])
+    }
+
+    func testCodexScriptIsDescribedByItsCommand() {
+        let tracker = codexTracker()
+        let script = #"text(await tools.exec_command({cmd:"git status --short\ngit log -1",workdir:"/Users/x/project"}));"#
+        tracker.ingest(line: Substring(TranscriptFixtures.codexScript(script, id: "c1", at: date("2026-10-02T09:50:41.000Z"))), path: codexPath)
+
+        let running = tracker.snapshot(now: date("2026-10-02T09:50:42.000Z"))
+        XCTAssertEqual(running.map(\.state), [.working])
+        XCTAssertEqual(running.first?.statusText, "running: git status --short")
+        XCTAssertEqual(running.first?.projectName, "project")
+
+        tracker.ingest(line: Substring(TranscriptFixtures.codexScriptOutput("c1", at: date("2026-10-02T09:50:43.000Z"))), path: codexPath)
+        tracker.ingest(line: codexTaskComplete(ts: "2026-10-02T09:50:44.000Z"), path: codexPath)
+
+        let waiting = tracker.snapshot(now: date("2026-10-02T09:51:10.000Z"))
+        XCTAssertEqual(waiting.map(\.statusText), ["awaiting you"])
+        XCTAssertEqual(tracker.drainDone().map(\.statusText), ["finished: git status --short"])
+    }
+
+    func testCodexScriptWithSeveralCallsNamesTheFirstAndCountsTheRest() {
+        let tracker = codexTracker()
+        let script = #"""
+            const r = await Promise.all([tools.exec_command({cmd:"pwd && ls"}), tools.exec_command({cmd:"swift build"})]);
+            text(await tools.apply_patch("*** Begin Patch\n*** Update File: src/app.swift\n*** End Patch\n"));
+            """#
+        tracker.ingest(line: Substring(TranscriptFixtures.codexScript(script, id: "c1", at: date("2026-10-02T09:50:41.000Z"))), path: codexPath)
+        XCTAssertEqual(tracker.snapshot(now: date("2026-10-02T09:50:42.000Z")).map(\.statusText), ["running: pwd && ls (+2 more)"])
+    }
+
+    func testCodexScriptThatOnlyLooksIsNotTheLastAction() {
+        let tracker = codexTracker()
+        tracker.ingest(line: Substring(TranscriptFixtures.codexExec("swift test", id: "c1", at: date("2026-10-02T09:50:30.000Z"))), path: codexPath)
+        XCTAssertEqual(tracker.snapshot(now: date("2026-10-02T09:50:31.000Z")).map(\.statusText), ["running: swift test"],
+                       "a command recorded the old way is described as before")
+        tracker.ingest(line: line([
+            "timestamp": "2026-10-02T09:50:35.000Z", "type": "response_item",
+            "payload": ["type": "function_call_output", "call_id": "c1", "output": "ok"],
+        ]), path: codexPath)
+
+        let look = #"text(await tools.view_image({path:"/Users/x/project/shot.png"}));"#
+        tracker.ingest(line: Substring(TranscriptFixtures.codexScript(look, id: "c2", at: date("2026-10-02T09:50:41.000Z"))), path: codexPath)
+        XCTAssertEqual(tracker.snapshot(now: date("2026-10-02T09:50:42.000Z")).map(\.statusText), ["running: view_image"])
+
+        tracker.ingest(line: Substring(TranscriptFixtures.codexScriptOutput("c2", at: date("2026-10-02T09:50:43.000Z"))), path: codexPath)
+        tracker.ingest(line: codexTaskComplete(ts: "2026-10-02T09:50:44.000Z"), path: codexPath)
+        _ = tracker.snapshot(now: date("2026-10-02T09:51:10.000Z"))
+        XCTAssertEqual(tracker.drainDone().map(\.statusText), ["finished: swift test"])
+    }
+
     func testFirstLineMatchesSplittingOnNewlines() {
         for text in [
             "", "one", "one\ntwo", "one\n", "\n\nthree\nfour", "\n", "a\r\nb", "a\r\nb\nc",

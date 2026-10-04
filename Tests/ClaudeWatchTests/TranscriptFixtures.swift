@@ -75,6 +75,32 @@ struct TranscriptFixtures {
         ])
     }
 
+    /// A Codex "code mode" record as versions since mid-2026 write it: the tool is `exec`
+    /// and its input is a JavaScript program that makes the real calls.
+    static func codexScript(_ script: String, id: String, ordinal: Int = 1, at date: Date = Date()) -> String {
+        json([
+            "timestamp": iso.string(from: date), "ordinal": ordinal, "type": "response_item",
+            "payload": [
+                "type": "custom_tool_call", "id": "ctc_\(id)", "status": "completed", "call_id": id,
+                "name": "exec", "input": script,
+                "internal_chat_message_metadata_passthrough": ["turn_id": "turn-1", "create_time": 1_790_934_637.2],
+            ],
+        ])
+    }
+
+    /// The record answering script `id`.
+    static func codexScriptOutput(_ id: String, text: String = "Script completed\nWall time 0.2 seconds\nOutput:\n", ordinal: Int = 2, at date: Date = Date()) -> String {
+        json([
+            "timestamp": iso.string(from: date), "ordinal": ordinal, "type": "response_item",
+            "payload": [
+                "type": "custom_tool_call_output", "id": "ctco_\(id)", "call_id": id,
+                "output": [["type": "input_text", "text": text]],
+                "internal_chat_message_metadata_passthrough": ["turn_id": "turn-1", "create_time": 1_790_934_647.4],
+            ],
+            "metadata": ["client_authored": false],
+        ])
+    }
+
     /// Appends `text` exactly as given (callers add the newline, or leave it off to model a
     /// line that is still being written). `modified` backdates the file afterwards.
     @discardableResult

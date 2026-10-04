@@ -47,6 +47,25 @@ final class TranscriptHTMLRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("&lt;b&gt;hi&lt;/b&gt;"))
     }
 
+    func testCodexScriptIsTheAnchorOfEveryCallInIt() throws {
+        let folder = tmp.appendingPathComponent(".codex/sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("rollout-a.jsonl")
+        let script = #"text(await tools.exec_command({cmd:"echo <one>"})); text(await tools.exec_command({cmd:"echo two"}));"#
+        let text = [
+            TranscriptFixtures.codexMeta(session: "cs", cwd: "/work/app"),
+            TranscriptFixtures.codexScript(script, id: "call_script"),
+            TranscriptFixtures.codexScript(#"text(await tools.exec_command({cmd:"echo three"}));"#, id: "call_other"),
+        ].joined(separator: "\n") + "\n"
+        try Data(text.utf8).write(to: file)
+
+        // The second call of the first script: the row's id is the record's plus "#2".
+        let html = try XCTUnwrap(TranscriptHTMLRenderer.render(transcriptPath: file.path, highlightId: "call_script#2"))
+        XCTAssertTrue(html.contains("<div class=\"tool target\" id=\"call_script\">"))
+        XCTAssertTrue(html.contains("<div class=\"tool\" id=\"call_other\">"))
+        XCTAssertTrue(html.contains("tools.exec_command({cmd:&quot;echo &lt;one&gt;&quot;})"), "the script as written, escaped")
+    }
+
     func testMissingFileReturnsNil() {
         XCTAssertNil(TranscriptHTMLRenderer.render(transcriptPath: "/no/such/file.jsonl", highlightId: "x"))
     }
