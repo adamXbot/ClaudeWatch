@@ -130,6 +130,7 @@ final class TranscriptStoreTests: XCTestCase {
         waitUntil("the new event is shown") { store.events.first?.id == "fresh" }
 
         XCTAssertEqual(store.events.map(\.id), ["fresh", "e4b", "e4a"])
+        store.onScanQueue {}
         XCTAssertFalse(announced.ids.contains("e0a"), "what was skipped is not replayed")
         XCTAssertTrue(announced.ids.contains("fresh"))
     }
@@ -150,8 +151,8 @@ final class TranscriptStoreTests: XCTestCase {
         waitUntil("the append is shown") { store.events.count == 2 }
 
         XCTAssertEqual(store.events.map(\.id), ["t2", "t1"])
-        XCTAssertEqual(announced.ids, ["t2"])
         store.onScanQueue {}
+        XCTAssertEqual(announced.ids, ["t2"])
         XCTAssertEqual(scanner.work.listings, 1, "the watcher said which file; nothing was listed")
         XCTAssertEqual(scanner.work.filesRead, 2)
     }
@@ -238,6 +239,7 @@ final class TranscriptStoreTests: XCTestCase {
         try fixtures.append(bash("two", id: "t2", at: daysAgo(1)), to: "p/a.jsonl")
         watcher.report([file.path])
         waitUntil("the append is shown") { store.events.count == 2 }
+        store.onScanQueue {}
         XCTAssertEqual(announced.ids, ["t2"], "what happens from then on is")
     }
 
@@ -257,11 +259,13 @@ final class TranscriptStoreTests: XCTestCase {
 
         store.start()
         waitUntil("the gap is caught up") { store.events.count == 2 }
+        store.onScanQueue {}
         XCTAssertEqual(announced.ids, [], "what was missed while stopped is not announced late")
 
         try fixtures.append(bash("three", id: "t3", at: daysAgo(1)), to: "p/a.jsonl")
         watcher.report([file.path])
         waitUntil("the append is shown") { store.events.count == 3 }
+        store.onScanQueue {}
         XCTAssertEqual(announced.ids, ["t3"])
     }
 
@@ -287,6 +291,7 @@ final class TranscriptStoreTests: XCTestCase {
         try fixtures.append(bash("two", id: "t2", at: daysAgo(1)), to: "p/a.jsonl")
         watcher.report([file.path])
         waitUntil("the append is shown") { store.events.count == 2 }
+        store.onScanQueue {}
         XCTAssertEqual(announced.ids, ["t2"])
 
         store.refresh()
