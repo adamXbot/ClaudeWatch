@@ -4,16 +4,14 @@ import Combine
 
 final class MenuBarInsertionTests: XCTestCase {
 
-    private var suite = ""
-    private var defaults: UserDefaults!
+    private var defaults: MemoryDefaults!
     private var settings: SettingsStore!
     private var hasClaude: CurrentValueSubject<Bool, Never>!
     private var hasCodex: CurrentValueSubject<Bool, Never>!
     private var cancellables: Set<AnyCancellable> = []
 
     override func setUp() {
-        suite = "claudewatch.test.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        defaults = MemoryDefaults()
         settings = SettingsStore(defaults: defaults)
         hasClaude = CurrentValueSubject(false)
         hasCodex = CurrentValueSubject(false)
@@ -21,7 +19,6 @@ final class MenuBarInsertionTests: XCTestCase {
 
     override func tearDown() {
         cancellables.removeAll()
-        defaults.removePersistentDomain(forName: suite)
     }
 
     private func makeInsertion(claude: SourceVisibility, codex: SourceVisibility) -> MenuBarInsertion {
