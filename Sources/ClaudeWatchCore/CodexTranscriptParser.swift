@@ -49,12 +49,7 @@ public enum CodexTranscriptParser {
         let sessionId = context.sessionId.isEmpty ? sessionIdFromPath(transcriptPath) : context.sessionId
         let cwd = context.cwd
         let project = projectName(cwd: cwd, transcriptPath: transcriptPath)
-        let turnId = ((payload["internal_chat_message_metadata_passthrough"] as? [String: Any])?["turn_id"] as? String)
-            ?? sessionId
         let callId = payload["call_id"] as? String ?? payload["id"] as? String ?? UUID().uuidString
-        // A patch recorded on its own has always been filed under its turn. One inside a
-        // script is filed under its session, like the commands beside it.
-        let ownPatch = payload["name"] as? String == "apply_patch"
 
         return actions.enumerated().map { index, action in
             let described = describe(action, cwd: cwd)
@@ -65,7 +60,7 @@ public enum CodexTranscriptParser {
                 toolName: described.toolName,
                 primary: described.primary,
                 secondary: described.secondary,
-                sessionId: ownPatch ? turnId : sessionId,
+                sessionId: sessionId,
                 cwd: cwd,
                 projectName: project,
                 timestamp: timestamp,
