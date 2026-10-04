@@ -110,7 +110,7 @@ public enum TranscriptHTMLRenderer {
             case "function_call", "custom_tool_call":
                 body += turn(role: "assistant", label: "Codex", time: time, inner: renderCodexTool(payload, highlightId: highlightId))
             case "function_call_output", "custom_tool_call_output":
-                let output = payload["output"] as? String ?? ""
+                let output = codexOutputText(payload["output"])
                 if !output.isEmpty {
                     body += turn(role: "tool", label: "Tool output", time: time,
                                  inner: "<details class=\"result\"><summary>tool result</summary><pre>\(esc(truncate(output, 4000)))</pre></details>")
@@ -346,6 +346,22 @@ public enum TranscriptHTMLRenderer {
             return arr.compactMap { $0["text"] as? String }.joined(separator: "\n")
         }
         return ""
+    }
+
+    /// A Codex tool output is a string or, since "code mode", a list of
+    /// `{type:input_text,text:…}` and `{type:input_image,…}` parts. Each part starts on
+    /// its own line, and an image is named rather than embedded.
+    private static func codexOutputText(_ any: Any?) -> String {
+        if let s = any as? String { return s }
+        guard let parts = any as? [[String: Any]] else { return "" }
+        var out = ""
+        for part in parts {
+            let piece = (part["type"] as? String) == "input_image" ? "[image]" : stringValue(part["text"])
+            if piece.isEmpty { continue }
+            if let last = out.last, !last.isNewline { out += "\n" }
+            out += piece
+        }
+        return out
     }
 
     private static func prettyJSON(_ obj: Any) -> String {
