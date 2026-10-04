@@ -14,7 +14,7 @@ let package = Package(
     ],
     dependencies: [
         // In-app auto-update. Only the app target depends on it; Core stays dependency-free.
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0"),
     ],
     targets: [
         .target(
