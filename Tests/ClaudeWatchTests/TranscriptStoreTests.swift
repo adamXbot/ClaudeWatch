@@ -28,10 +28,13 @@ final class TranscriptStoreTests: XCTestCase {
         fixtures.remove()
     }
 
+    /// A store that does nothing the test did not cause: its watcher reports only what the
+    /// test fires. With `watcher: nil` the store polls, and lists the directory again every
+    /// few intervals, so what `scanner.work` counts then depends on how long the test took.
     private func makeStore(
         source: TranscriptSource = .claude,
         maxEvents: Int = 2000,
-        watcher: TranscriptWatching? = nil
+        watcher: TranscriptWatching? = ManualWatcher()
     ) -> (store: TranscriptStore, scanner: EventScanner, announced: Announcements) {
         let scanner = EventScanner(source: source, root: fixtures.root)
         let store = TranscriptStore(scanner: scanner, interval: 0.02, maxEvents: maxEvents, watcher: watcher)
@@ -210,7 +213,7 @@ final class TranscriptStoreTests: XCTestCase {
 
     func testWithoutAWatcherChangesAreFoundByPolling() throws {
         try fixtures.append(bash("one", id: "t1", at: daysAgo(3)), to: "p/a.jsonl")
-        let (store, _, _) = makeStore()
+        let (store, _, _) = makeStore(watcher: nil)
         store.start()
         waitUntil("the feed is loaded") { store.events.count == 1 }
 
