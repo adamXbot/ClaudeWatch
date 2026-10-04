@@ -67,9 +67,7 @@ final class NotificationRuleTests: XCTestCase {
 final class SettingsStoreTests: XCTestCase {
 
     func testRulesRoundTripThroughUserDefaults() {
-        let suite = "claudewatch.test.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = MemoryDefaults()
 
         let store = SettingsStore(defaults: defaults)
         store.rules = [NotificationRule(name: "Commits", trigger: .action, kind: .shell, textMatch: "git commit")]
@@ -81,19 +79,13 @@ final class SettingsStoreTests: XCTestCase {
     }
 
     func testSnapshotReflectsSystemToggle() {
-        let suite = "claudewatch.test.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        let store = SettingsStore(defaults: defaults)
+        let store = SettingsStore(defaults: MemoryDefaults())
         store.systemNotificationsEnabled = false
         XCTAssertFalse(store.snapshot().systemEnabled)
     }
 
     func testSourceVisibilityRoundTripsThroughUserDefaults() {
-        let suite = "claudewatch.test.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = MemoryDefaults()
 
         let store = SettingsStore(defaults: defaults)
         store.claudeVisibility = .hide
