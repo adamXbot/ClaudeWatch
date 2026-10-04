@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build-test:
     name: Build & test
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +52,7 @@ jobs:
     name: Sign, notarize & release
     needs: build-test
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: macos-14
+    runs-on: macos-26
     permissions:
       contents: write    # only this job publishes a Release
     env:
