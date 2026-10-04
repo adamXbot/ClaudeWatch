@@ -138,14 +138,15 @@ public enum TranscriptHTMLRenderer {
     private static func renderCodexTool(_ payload: [String: Any], highlightId: String) -> String {
         let name = payload["name"] as? String ?? "tool"
         let id = payload["call_id"] as? String ?? payload["id"] as? String ?? ""
-        let isTarget = id == highlightId
+        // Every call in a script is its own row of the feed; they all anchor on the script.
+        let isTarget = id == CodexTranscriptParser.callId(ofEvent: highlightId)
         let cls = isTarget ? "tool target" : "tool"
         let detail: String
 
         if name == "exec_command" || name == "write_stdin" {
             let args = parseJSONString(payload["arguments"] as? String)
             detail = "<pre>\(esc(prettyJSON(args)))</pre>"
-        } else if name == "apply_patch" {
+        } else if name == "apply_patch" || name == "exec" {
             detail = "<pre>\(esc(truncate(payload["input"] as? String ?? "", 4000)))</pre>"
         } else {
             detail = "<pre>\(esc(truncate(prettyJSON(payload), 3000)))</pre>"

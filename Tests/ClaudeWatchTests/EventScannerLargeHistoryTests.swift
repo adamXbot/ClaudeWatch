@@ -149,6 +149,17 @@ final class EventScannerLargeHistoryTests: XCTestCase {
             TranscriptFixtures.codexMeta(session: "cs", cwd: "/work/app"),
             TranscriptFixtures.json(["timestamp": "2026-07-02T01:59:07.137Z", "type": "response_item", "payload": ["type": "message", "role": "user"]]),
             TranscriptFixtures.codexExec("git status", id: "c1"),
+            // What Codex writes now: the commands are calls inside an `exec` script.
+            TranscriptFixtures.codexScript(#"text(await tools.exec_command({cmd:"swift build",workdir:"/work/app"}));"#, id: "c2", ordinal: 3),
+            TranscriptFixtures.codexScriptOutput("c2", ordinal: 4),
+            TranscriptFixtures.codexScript("""
+                const results = await Promise.allSettled([
+                  tools.exec_command({cmd:"git diff --stat","max_output_tokens":2000}),
+                  tools.view_image({path:"/work/app/shot.png"}),
+                ]);
+                text(await tools.apply_patch("*** Begin Patch\\n*** Update File: Sources/App.swift\\n@@\\n-a\\n+b\\n*** End Patch\\n"));
+                """, id: "c3", ordinal: 5),
+            TranscriptFixtures.codexScriptOutput("c3", ordinal: 6),
         ].joined(separator: "\n") + "\n"
         try fixtures.append(codex, to: "codex/b.jsonl")
 
@@ -160,7 +171,21 @@ final class EventScannerLargeHistoryTests: XCTestCase {
             let eventsOnly = scanner.readEvents(scanner.listFiles(), offsets: &offsets)
             XCTAssertEqual(eventsOnly, full, "\(source)")
             XCTAssertFalse(full.isEmpty)
+            if source == .codex {
+                XCTAssertEqual(full.map(\.primary), ["git status", "swift build", "git diff --stat", "Sources/App.swift"])
+                XCTAssertEqual(full.map(\.id), ["c1", "c2", "c3", "c3#2"])
+            }
         }
+    }
+
+    func testEventMarkersCoverEveryRecordThatYieldsACodexEvent() {
+        func matches(_ line: String) -> Bool {
+            Array(line.utf8).withUnsafeBytes { CodexTranscriptParser.eventMarkers.match($0) }
+        }
+        XCTAssertTrue(matches(TranscriptFixtures.codexScript(#"text(await tools.exec_command({cmd:"ls"}));"#, id: "c1")))
+        XCTAssertTrue(matches(TranscriptFixtures.codexExec("ls", id: "c2")))
+        XCTAssertTrue(matches(TranscriptFixtures.codexMeta(session: "s", cwd: "/w")))
+        XCTAssertFalse(matches(TranscriptFixtures.codexScriptOutput("c1")), "outputs are the bulk of a transcript and hold no event")
     }
 
     // MARK: - Skipping

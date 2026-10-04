@@ -180,12 +180,13 @@ public final class SessionTracker {
         switch payloadType {
         case "function_call", "custom_tool_call":
             guard let id = payload["call_id"] as? String ?? payload["id"] as? String else { break }
-            let name = payload["name"] as? String ?? payloadType
+            // The same calls the feed shows, so the two cannot disagree about what counts.
+            let actions = CodexTranscriptParser.actions(in: payload)
             if !s.pending.contains(id) { s.pending.append(id) }
-            s.pendingDesc[id] = summarizeCodex(payload: payload)
+            s.pendingDesc[id] = summarizeCodex(payload: payload, actions: actions)
             s.pendingTime[id] = ts ?? s.lastActivity
             if let ts, ts > s.lastAssistantActivity { s.lastAssistantActivity = ts }
-            if ["exec_command", "write_stdin", "apply_patch"].contains(name) {
+            if !actions.isEmpty {
                 s.lastActionSummary = s.pendingDesc[id]
             }
 
@@ -314,26 +315,40 @@ public final class SessionTracker {
         }
     }
 
-    private func summarizeCodex(payload: [String: Any]) -> String {
-        let name = payload["name"] as? String ?? "tool"
-        if name == "exec_command" {
-            let args = parseJSONString(payload["arguments"] as? String)
-            let cmd = (args["cmd"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    /// What a Codex tool call is doing, for "running: …" and "finished: …". An `exec` script
+    /// can hold several calls: the first is named and the rest are counted.
+    private func summarizeCodex(payload: [String: Any], actions: [CodexTranscriptParser.Action]) -> String {
+        guard let first = actions.first else {
+            let name = payload["name"] as? String ?? "tool"
+            // A script that only looks (an image, a web page, a terminal's output so far).
+            if name == "exec", payload["type"] as? String == "custom_tool_call",
+               let tool = CodexExecScript.calls(in: payload["input"] as? String ?? "").first?.tool {
+                return tool
+            }
+            return name
+        }
+        let summary = summarize(first)
+        return actions.count > 1 ? "\(summary) (+\(actions.count - 1) more)" : summary
+    }
+
+    private func summarize(_ action: CodexTranscriptParser.Action) -> String {
+        switch action {
+        case .shell(let command, _):
+            let cmd = (command ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             return Self.firstLine(of: cmd) ?? "terminal command"
-        }
-        if name == "write_stdin" {
+        case .stdin:
             return "terminal input"
-        }
-        if name == "apply_patch" {
-            let patch = payload["input"] as? String ?? ""
-            for line in patch.split(separator: "\n") {
+        case .patch(let patch):
+            for line in (patch ?? "").split(separator: "\n") {
                 if line.hasPrefix("*** Update File: ") { return String(line.dropFirst("*** Update File: ".count)) }
                 if line.hasPrefix("*** Add File: ") { return String(line.dropFirst("*** Add File: ".count)) }
                 if line.hasPrefix("*** Delete File: ") { return String(line.dropFirst("*** Delete File: ".count)) }
             }
             return "apply patch"
+        case .script(let code, let title):
+            if let title, !title.isEmpty { return title }
+            return Self.firstLine(of: (code ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) ?? "script"
         }
-        return name
     }
 
     /// `text.split(separator: "\n").first`, found from the bytes instead of by walking every
@@ -354,13 +369,6 @@ public final class SessionTracker {
             index = utf8.index(after: index)
         }
         return start == utf8.endIndex ? nil : String(text[start...])
-    }
-
-    private func parseJSONString(_ s: String?) -> [String: Any] {
-        guard let s, let data = s.data(using: .utf8),
-              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        else { return [:] }
-        return obj
     }
 
     private func codexSessionId(from path: String) -> String {

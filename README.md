@@ -43,9 +43,11 @@ any webhook you configure sends notifications to the URL you give it.
 - **Turns each system-touching call into a row.** From Claude: `Bash` (the command plus its
   description), `Write` (path and size), `Edit` / `MultiEdit` (path), `NotebookEdit`
   (notebook and edit mode), `WebFetch` (URL), `WebSearch` (query). From Codex:
-  `exec_command`, `write_stdin`, and `apply_patch`. Read-only tools (Read, Grep, Glob, Task
-  and friends) are deliberately excluded — this is about what the AI *does*, not what it
-  looks at.
+  `exec_command`, `write_stdin`, `apply_patch` and `js` (its Node REPL), whether each is
+  recorded on its own or, as recent versions do, as calls inside an `exec` script. A script
+  is read, not run, so a command it builds as it goes shows as "(computed command)".
+  Read-only tools (Read, Grep, Glob, Task and friends) are deliberately excluded — this is
+  about what the AI *does*, not what it looks at.
 - **Links each row to its source.** Click a row to render the whole thread to HTML and open
   it in your browser at that command; subagent rows open the subagent's own transcript.
   There are also buttons to open Terminal in the project and resume the session
