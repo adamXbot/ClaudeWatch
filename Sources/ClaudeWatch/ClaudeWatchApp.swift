@@ -20,6 +20,7 @@ struct ClaudeWatchApp: App {
     // settings or availability publish (see `MenuBarInsertion`).
     private let settings: SettingsStore
     private let availability: SourceAvailability
+    private let demand: ScanDemand
     private let engine = NotificationEngine()
 
     init() {
@@ -52,8 +53,8 @@ struct ClaudeWatchApp: App {
 
         SystemNotifier.requestAuthorization()
         availability.start()
-        claudeStore.start()
-        codexStore.start()
+        // Starts each store now if it is needed, and whenever that changes.
+        demand = ScanDemand(settings: settings, menuBar: menuBar, claude: claudeStore, codex: codexStore)
     }
 
     var body: some Scene {

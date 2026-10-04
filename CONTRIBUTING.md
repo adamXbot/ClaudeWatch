@@ -12,8 +12,9 @@ for you.
 ```
 Sources/ClaudeWatchCore/   # pure, headless logic — unit-tested
   EventKind, CommandEvent, TranscriptParser, CodexTranscriptParser,
-  EventScanner, TranscriptStore, TranscriptSource, SessionTracker,
-  SessionStatus, TranscriptHTMLRenderer, RelativeTime,
+  EventScanner, TranscriptStore, TranscriptWatcher, ScanDemand,
+  TranscriptSource, SessionTracker, SessionStatus, LineMarkers, ISOTimestamp,
+  TranscriptHTMLRenderer, RelativeTime,
   NotificationRule, NotificationEngine, SettingsStore, MenuBarInsertion,
   Keychain
 Sources/ClaudeWatch/       # the SwiftUI menu-bar app

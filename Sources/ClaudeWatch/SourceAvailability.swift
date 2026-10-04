@@ -2,9 +2,9 @@ import Foundation
 import Combine
 import ClaudeWatchCore
 
-/// Polls for local transcripts so `.automatic` icons can follow them. Listing a large
-/// ~/.claude or ~/.codex takes seconds, so it happens on a private queue; only changes
-/// are published, on the main thread.
+/// Polls for local transcripts so `.automatic` icons can follow them. Each check stops at
+/// the first transcript it finds; it still touches the disk, so it happens on a private
+/// queue, and only changes are published, on the main thread.
 final class SourceAvailability: ObservableObject {
     @Published private(set) var hasClaude = false
     @Published private(set) var hasCodex = false
@@ -28,8 +28,8 @@ final class SourceAvailability: ObservableObject {
 
     // Runs on `queue`.
     private func scan() {
-        let hasClaude = EventScanner(source: .claude).discoverFiles().isEmpty == false
-        let hasCodex = EventScanner(source: .codex).discoverFiles().isEmpty == false
+        let hasClaude = EventScanner(source: .claude).hasFiles()
+        let hasCodex = EventScanner(source: .codex).hasFiles()
         DispatchQueue.main.async {
             if self.hasClaude != hasClaude { self.hasClaude = hasClaude }
             if self.hasCodex != hasCodex { self.hasCodex = hasCodex }

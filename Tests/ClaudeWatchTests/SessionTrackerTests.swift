@@ -96,6 +96,16 @@ final class SessionTrackerTests: XCTestCase {
         XCTAssertTrue(tracker.drainDone().isEmpty, "a dead/timed-out tool must not report 'finished'")
     }
 
+    func testFirstLineMatchesSplittingOnNewlines() {
+        for text in [
+            "", "one", "one\ntwo", "one\n", "\n\nthree\nfour", "\n", "a\r\nb", "a\r\nb\nc",
+            "\r\n", "\r\nx\ny", "tab\there\n\nend", "caf\u{E9}\nnext", "e\u{301}\n\u{301}x", "\n\u{301}x\ny",
+        ] {
+            XCTAssertEqual(SessionTracker.firstLine(of: text), text.split(separator: "\n").first.map(String.init),
+                           "\(text.debugDescription)")
+        }
+    }
+
     func testUserReplyDoesNotEmitFalseDone() {
         let tracker = SessionTracker()
         tracker.ingest(line: assistantEndTurn(ts: "2026-06-22T10:00:00.000Z"), path: "/p/s.jsonl")

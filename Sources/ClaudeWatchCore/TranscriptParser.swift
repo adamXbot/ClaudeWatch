@@ -3,6 +3,10 @@ import Foundation
 /// Stateless conversion of a single transcript line into zero or more `CommandEvent`s.
 public enum TranscriptParser {
 
+    /// A line that does not contain this cannot produce an event, so a reader that only
+    /// wants events can skip it without parsing. (Neither tool escapes plain ASCII in JSON.)
+    static let eventMarkers = LineMarkers([#""tool_use""#])
+
     /// Tool names we surface, mapped to their kind. Anything not in here is ignored.
     private static let trackedTools: [String: EventKind] = [
         "Bash": .shell,
@@ -18,10 +22,19 @@ public enum TranscriptParser {
     /// turn containing a tracked tool_use.
     public static func events(fromLine line: Substring, transcriptPath: String) -> [CommandEvent] {
         guard let data = line.data(using: .utf8),
-              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              (obj["type"] as? String) == "assistant",
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return [] }
+        return events(fromRecord: obj, transcriptPath: transcriptPath)
+    }
+
+    /// The same, for a line that has already been parsed (the store parses each line once
+    /// and shares it with the session tracker).
+    static func events(fromRecord obj: [String: Any], transcriptPath: String) -> [CommandEvent] {
+        guard (obj["type"] as? String) == "assistant",
               let message = obj["message"] as? [String: Any],
-              let content = message["content"] as? [[String: Any]]
+              let content = message["content"] as? [[String: Any]],
+              // Most assistant turns run no tool; skip the envelope work for those.
+              content.contains(where: { ($0["type"] as? String) == "tool_use" })
         else { return [] }
 
         let sessionId = obj["sessionId"] as? String ?? ""
@@ -141,20 +154,8 @@ public enum TranscriptParser {
         return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
     }
 
-    // ISO-8601 with fractional seconds (e.g. "2026-06-22T01:14:40.425Z").
-    private static let isoFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-    private static let isoPlain: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
     private static func parseDate(_ s: String?) -> Date {
         guard let s else { return .distantPast }
-        return isoFractional.date(from: s) ?? isoPlain.date(from: s) ?? .distantPast
+        return ISOTimestamp.date(from: s) ?? .distantPast
     }
 }
