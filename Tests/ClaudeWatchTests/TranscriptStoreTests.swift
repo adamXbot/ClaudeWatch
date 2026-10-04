@@ -75,7 +75,7 @@ final class TranscriptStoreTests: XCTestCase {
         store.onScanQueue {}
         XCTAssertEqual(scanner.work.listings, 1)
         XCTAssertEqual(scanner.work.filesRead, 2, "three sessions are older than anything the feed can show")
-        XCTAssertEqual(Set(announced.ids), ["e4a", "e4b", "e3a", "e3b"])
+        XCTAssertEqual(announced.ids, [], "history is shown, not announced")
     }
 
     func testFirstReadTakesEverythingWhenTheFeedHasRoom() throws {
@@ -147,7 +147,7 @@ final class TranscriptStoreTests: XCTestCase {
         waitUntil("the append is shown") { store.events.count == 2 }
 
         XCTAssertEqual(store.events.map(\.id), ["t2", "t1"])
-        XCTAssertEqual(announced.ids, ["t1", "t2"])
+        XCTAssertEqual(announced.ids, ["t2"])
         store.onScanQueue {}
         XCTAssertEqual(scanner.work.listings, 1, "the watcher said which file; nothing was listed")
         XCTAssertEqual(scanner.work.filesRead, 2)
@@ -223,14 +223,14 @@ final class TranscriptStoreTests: XCTestCase {
 
     // MARK: - Starting, stopping, pausing
 
-    func testStartingLaterDoesNotAnnounceTheBacklog() throws {
+    func testStartDoesNotAnnounceTheBacklog() throws {
         let file = try fixtures.append(bash("one", id: "t1", at: daysAgo(2)), to: "p/a.jsonl")
         let watcher = ManualWatcher()
         let (store, _, announced) = makeStore(watcher: watcher)
-        store.start(announceBacklog: false)
+        store.start()
         waitUntil("the feed is loaded") { store.events.count == 1 }
         store.onScanQueue {}
-        XCTAssertEqual(announced.ids, [], "history read on a late start is not news")
+        XCTAssertEqual(announced.ids, [], "history read on a start is not news")
 
         try fixtures.append(bash("two", id: "t2", at: daysAgo(1)), to: "p/a.jsonl")
         watcher.report([file.path])
@@ -252,14 +252,14 @@ final class TranscriptStoreTests: XCTestCase {
         settle()
         XCTAssertEqual(store.events.map(\.id), ["t1"], "stopped: kept, not updated")
 
-        store.start(announceBacklog: false)
+        store.start()
         waitUntil("the gap is caught up") { store.events.count == 2 }
-        XCTAssertEqual(announced.ids, ["t1"], "what was missed while stopped is not announced late")
+        XCTAssertEqual(announced.ids, [], "what was missed while stopped is not announced late")
 
         try fixtures.append(bash("three", id: "t3", at: daysAgo(1)), to: "p/a.jsonl")
         watcher.report([file.path])
         waitUntil("the append is shown") { store.events.count == 3 }
-        XCTAssertEqual(announced.ids, ["t1", "t3"])
+        XCTAssertEqual(announced.ids, ["t3"])
     }
 
     func testLoadIfNeededReadsOnceWithoutWatching() throws {
@@ -275,16 +275,23 @@ final class TranscriptStoreTests: XCTestCase {
         XCTAssertEqual(announced.ids, [])
     }
 
-    func testRefreshRereadsAndAnnouncesAgain() throws {
-        try fixtures.append(bash("one", id: "t1", at: daysAgo(2)), to: "p/a.jsonl")
-        let (store, _, announced) = makeStore(watcher: ManualWatcher())
+    func testRefreshRereadsWithoutAnnouncingAgain() throws {
+        let file = try fixtures.append(bash("one", id: "t1", at: daysAgo(2)), to: "p/a.jsonl")
+        let watcher = ManualWatcher()
+        let (store, scanner, announced) = makeStore(watcher: watcher)
         store.start()
         waitUntil("the feed is loaded") { store.events.count == 1 }
+        try fixtures.append(bash("two", id: "t2", at: daysAgo(1)), to: "p/a.jsonl")
+        watcher.report([file.path])
+        waitUntil("the append is shown") { store.events.count == 2 }
+        XCTAssertEqual(announced.ids, ["t2"])
 
         store.refresh()
-        waitUntil("the refresh has run") { announced.ids.count == 2 }
-        XCTAssertEqual(announced.ids, ["t1", "t1"], "as before: the engine's own dedupe absorbs the repeat")
-        XCTAssertEqual(store.events.map(\.id), ["t1"])
+        store.onScanQueue {}
+        XCTAssertEqual(scanner.work.listings, 2, "the refresh read everything again")
+        settle()
+        XCTAssertEqual(store.events.map(\.id), ["t2", "t1"])
+        XCTAssertEqual(announced.ids, ["t2"], "neither the history nor what was announced once is announced again")
     }
 
     func testPauseHoldsReadsUntilResumed() throws {
