@@ -59,6 +59,7 @@ final class CodexParserTests: XCTestCase {
         XCTAssertEqual(events[0].toolName, "apply_patch")
         XCTAssertEqual(events[0].primary, "src/app.swift")
         XCTAssertEqual(events[0].secondary, "1 update")
+        XCTAssertEqual(events[0].sessionId, "s", "the session, which `codex resume` takes, not the turn")
     }
 
     func testWriteStdinIsAShellEvent() {
