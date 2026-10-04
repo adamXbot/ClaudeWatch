@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "ClaudeWatch",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         // Pure, headless logic (parsing, scanning, HTML rendering) — unit-testable

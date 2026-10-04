@@ -22,6 +22,9 @@ VERSION="${VERSION#v}"                       # strip a leading "v"
 VERSION="${VERSION:-0.0.0-dev}"
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
+# Refresh the shared Settings, menu and About code, or verify the committed copy.
+python3 .project/mac_surfaces.py sync
+
 echo "→ swift build -c $CONFIG  (version $VERSION, build $BUILD_NUMBER)"
 swift build -c "$CONFIG"
 
@@ -65,7 +68,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key>        <string>APPL</string>
     <key>CFBundleShortVersionString</key> <string>${VERSION}</string>
     <key>CFBundleVersion</key>            <string>${BUILD_NUMBER}</string>
-    <key>LSMinimumSystemVersion</key>     <string>13.0</string>
+    <key>LSMinimumSystemVersion</key>     <string>14.0</string>
     <key>LSUIElement</key>                <true/>
     <key>NSHighResolutionCapable</key>    <true/>
     <key>SUFeedURL</key>                  <string>${SU_FEED_URL}</string>

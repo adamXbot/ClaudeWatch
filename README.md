@@ -69,7 +69,7 @@ is no Dock icon.
 ## Get it
 
 There is no packaged download yet — no release has been published, and there is no Homebrew
-formula. For now, build it yourself. You need macOS 13 or later and a Swift 5.9 toolchain
+formula. For now, build it yourself. You need macOS 14 or later and a Swift 5.9 toolchain
 (Xcode or the Command Line Tools).
 
 ```sh
