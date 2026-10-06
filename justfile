@@ -12,6 +12,13 @@ test:
 surfaces:
     python3 .project/mac_surfaces.py sync
 
+# Verify the shared surface copy, then build and run the tests
+[group("dev")]
+check:
+    python3 .project/mac_surfaces.py check
+    swift build
+    swift test
+
 # Build the release binary and assemble ClaudeWatch.app (same as CI)
 [group("dev")]
 build: surfaces

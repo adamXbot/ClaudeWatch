@@ -2,8 +2,8 @@
 
 ## Requirements
 
-macOS 13 or later and a Swift 5.9 toolchain (Xcode or the Command Line Tools). There are no
-other prerequisites — the only package dependency is
+macOS 14 or later and the Swift toolchain from Xcode 16 or later (Xcode or the Command Line
+Tools). There are no other prerequisites — the only package dependency is
 [Sparkle](https://github.com/sparkle-project/Sparkle), which Swift Package Manager fetches
 for you.
 
@@ -18,10 +18,12 @@ Sources/ClaudeWatchCore/   # pure, headless logic — unit-tested
   NotificationRule, NotificationEngine, SettingsStore, MenuBarInsertion,
   Keychain
 Sources/ClaudeWatch/       # the SwiftUI menu-bar app
-  ClaudeWatchApp, main, Actions, Updater, Highlighter,
-  SourceAvailability, SettingsWindow, DumpRunner, RenderTest
+  ClaudeWatchApp, main, ClaudeWatchSurface, Actions, Highlighter,
+  SourceAvailability, DumpRunner, RenderTest
   Views/                   # MenuContentView, CommandRowView,
-                           # ActiveSessionsView, EmptySourcesView, SettingsView
+                           # ActiveSessionsView, EmptySourcesView, SettingsPanes
+  MacSurfaces/             # the shared Settings, About, menu and Help code (a copy)
+Resources/Manual/          # the in-app manual, Markdown pages bundled with the app
 Tests/ClaudeWatchTests/    # XCTest coverage for the Core
 Tools/make_icon.swift      # regenerates Resources/AppIcon.icns
 ```
@@ -29,6 +31,17 @@ Tools/make_icon.swift      # regenerates Resources/AppIcon.icns
 `ClaudeWatchCore` is deliberately dependency-free and UI-free so the parsing, scanning and
 rendering can be tested without launching an app. Only the `ClaudeWatch` executable target
 links Sparkle.
+
+`Sources/ClaudeWatch/MacSurfaces` is a copy of the shared surface code the portfolio's macOS
+apps use for Settings, About, the app and Help menus and the menu bar popover footer. Never
+edit it here: `just surfaces` refreshes it when the shared source is on the machine, and
+`build.sh` verifies the committed copy against `.project/mac-surfaces.lock.json` otherwise.
+The app's own description of itself for those surfaces (name, links, licence, capabilities,
+shortcuts) is in `ClaudeWatchSurface.swift`.
+
+The manual that Help ▸ ClaudeWatch Help shows is `Resources/Manual`: numbered Markdown pages,
+the first heading of each being its title, copied by `build.sh` into
+`Contents/Resources/Manual`. Keep it accurate when behaviour changes.
 
 ## Commands
 
@@ -42,15 +55,18 @@ There is also a [justfile](justfile), if you have [just](https://just.systems) i
 
 ```sh
 just test
-just build            # swift build -c release && ./build.sh release
+just check            # verify the shared surface copy, swift build, swift test
+just surfaces         # refresh the shared surface copy
+just build            # just surfaces && swift build -c release && ./build.sh release
 just run              # build, then open the app
 just clean            # rm -rf .build ClaudeWatch.app
 ```
 
 `build.sh` takes the configuration as its first argument (default `release`), writes the
 `Info.plist` — including the bundle version, the `LSUIElement` flag that keeps it out of the
-Dock, and the Sparkle feed URL — and, when run outside CI, relaunches the freshly built app
-so the menu bar picks it up.
+Dock, the Sparkle feed URL with automatic checks off, and the build provenance (channel,
+commit, branch, dirty state) the About window shows on non-release builds — copies the manual
+in, and, when run outside CI, relaunches the freshly built app so the menu bar picks it up.
 
 ## Headless inspection
 

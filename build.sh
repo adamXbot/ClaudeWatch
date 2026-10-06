@@ -22,6 +22,28 @@ VERSION="${VERSION#v}"                       # strip a leading "v"
 VERSION="${VERSION:-0.0.0-dev}"
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
+# Build provenance for the About window: the channel, commit, branch and dirty state.
+# A tag build (CLAUDEWATCH_VERSION set, as the release job does) is the release
+# channel and records nothing about the repository; CI is "ci"; anything else "dev".
+if [ -z "${BUILD_CHANNEL:-}" ]; then
+  if [ -n "${CLAUDEWATCH_VERSION:-}" ]; then BUILD_CHANNEL=release
+  elif [ -n "${CI:-}" ]; then BUILD_CHANNEL=ci
+  else BUILD_CHANNEL=dev
+  fi
+fi
+export BUILD_CHANNEL
+BUILD_SHA="$(git rev-parse --short=12 HEAD 2>/dev/null || true)"
+BUILD_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+BUILD_DIRTY_FILES="$( (git status --porcelain 2>/dev/null || true) | wc -l | tr -d ' ')"
+BUILD_DIRTY=NO
+[ "${BUILD_DIRTY_FILES:-0}" -gt 0 ] && BUILD_DIRTY=YES
+BUILD_TAGGED=NO
+git describe --tags --exact-match HEAD >/dev/null 2>&1 && BUILD_TAGGED=YES
+if [ "$BUILD_CHANNEL" = release ]; then
+  BUILD_SHA=""
+  BUILD_BRANCH=""
+fi
+
 # Refresh the shared Settings, menu and About code, or verify the committed copy.
 python3 .project/mac_surfaces.py sync
 
@@ -42,6 +64,13 @@ cp "$BIN" "$APP/Contents/MacOS/ClaudeWatch"
 # App icon.
 if [ -f Resources/AppIcon.icns ]; then
   cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+fi
+
+# The in-app manual (Help ▸ ClaudeWatch Help): Markdown pages bundled with the app so
+# they always match the version that ships.
+if [ -d Resources/Manual ]; then
+  rm -rf "$APP/Contents/Resources/Manual"
+  cp -R Resources/Manual "$APP/Contents/Resources/Manual"
 fi
 
 # Embed Sparkle.framework so the app can self-update.
@@ -71,8 +100,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key>     <string>14.0</string>
     <key>LSUIElement</key>                <true/>
     <key>NSHighResolutionCapable</key>    <true/>
+    <key>NSHumanReadableCopyright</key>   <string>© 2026 Adam Kostarelas</string>
     <key>SUFeedURL</key>                  <string>${SU_FEED_URL}</string>
+    <key>SUEnableAutomaticChecks</key>    <false/>
     ${SU_KEY_LINE}
+    <key>BuildChannel</key>               <string>${BUILD_CHANNEL}</string>
+    <key>BuildSHA</key>                   <string>${BUILD_SHA}</string>
+    <key>BuildBranch</key>                <string>${BUILD_BRANCH}</string>
+    <key>BuildDirty</key>                 <string>${BUILD_DIRTY}</string>
+    <key>BuildDirtyFiles</key>            <string>${BUILD_DIRTY_FILES}</string>
+    <key>BuildTagged</key>                <string>${BUILD_TAGGED}</string>
 </dict>
 </plist>
 PLIST
