@@ -7,9 +7,14 @@ default:
 test:
     swift test
 
+# Copy the shared Settings, menu and About code into this app
+[group("dev")]
+surfaces:
+    python3 .project/mac_surfaces.py sync
+
 # Build the release binary and assemble ClaudeWatch.app (same as CI)
 [group("dev")]
-build:
+build: surfaces
     swift build -c release
     ./build.sh release
 
