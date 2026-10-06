@@ -1,10 +1,12 @@
 import SwiftUI
 import ClaudeWatchCore
 
+/// The popover behind a source's menu bar item: the standard header and footer around
+/// the live feed of that source's actions.
 struct MenuContentView: View {
     @EnvironmentObject var store: TranscriptStore
+    let app: SurfaceApp
     var source: TranscriptSource = .claude
-    var openSettings: () -> Void = {}
     @State private var searchText = ""
     @State private var hiddenKinds: Set<EventKind> = []
     @State private var hiddenProjects: Set<String> = []
@@ -45,7 +47,10 @@ struct MenuContentView: View {
             Divider()
             content
             Divider()
-            footer
+            status
+            Divider()
+            SurfacePopoverFooter(app: app)
+                .padding(.horizontal, 12).padding(.vertical, 8)
         }
     }
 
@@ -54,24 +59,20 @@ struct MenuContentView: View {
     private var header: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(.tint)
-                Text(source.activityTitle)
-                    .font(.system(size: 13, weight: .semibold))
+                SurfacePopoverHeader(app: app, mark: Image(systemName: "sparkles"))
                 if store.isPaused {
                     Text("paused").font(.system(size: 10, weight: .semibold))
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(Color.orange.opacity(0.2), in: Capsule())
                         .foregroundStyle(.orange)
                 }
-                Spacer()
                 filterMenu
             }
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
-                TextField("Filter commands, projects…", text: $searchText)
+                TextField("Filter \(source.displayName) commands, projects…", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                 if !searchText.isEmpty {
@@ -103,7 +104,7 @@ struct MenuContentView: View {
             if !availableProjects.isEmpty {
                 Divider()
                 Menu("Projects") {
-                    Button("Show all") { hiddenProjects.removeAll() }
+                    Button("Show All") { hiddenProjects.removeAll() }
                     Divider()
                     ForEach(availableProjects, id: \.self) { project in
                         Toggle(isOn: Binding(
@@ -119,12 +120,14 @@ struct MenuContentView: View {
             }
             Divider()
             Toggle("Pause watching", isOn: $store.isPaused)
-            Button("Refresh now") { store.refresh() }
+            Button("Refresh Now") { store.refresh() }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .help("Filter")
+        .accessibilityLabel("Filter")
     }
 
     // MARK: - Content
@@ -158,9 +161,11 @@ struct MenuContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Footer
+    // MARK: - Status
 
-    private var footer: some View {
+    /// What is being watched and whether it is paused; the pause control lives here, above
+    /// the standard footer.
+    private var status: some View {
         HStack(spacing: 8) {
             Circle()
                 .fill(store.isPaused ? Color.orange : Color.green)
@@ -173,16 +178,9 @@ struct MenuContentView: View {
                 Image(systemName: store.isPaused ? "play.fill" : "pause.fill")
             }
             .buttonStyle(.borderless)
-            .help(store.isPaused ? "Resume" : "Pause")
-            Button { openSettings() } label: {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(.borderless)
-            .help("Settings — notifications & webhooks")
-            Button("Quit") { NSApplication.shared.terminate(nil) }
-                .buttonStyle(.borderless)
-                .font(.system(size: 11))
+            .help(store.isPaused ? "Resume watching" : "Pause watching")
+            .accessibilityLabel(store.isPaused ? "Resume watching" : "Pause watching")
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.horizontal, 12).padding(.vertical, 6)
     }
 }

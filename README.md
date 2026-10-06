@@ -79,8 +79,11 @@ cd ClaudeWatch
 ```
 
 Local builds are unsigned, so the first launch needs a right-click → Open, or an approval
-under System Settings → Privacy & Security. To start it at login, add `ClaudeWatch.app`
-under System Settings → General → Login Items.
+under System Settings → Privacy & Security. To start it at login, turn on **Open ClaudeWatch
+at login** under Settings → General.
+
+The app carries its own manual: Help → ClaudeWatch Help, also reachable from the About
+window, with a page per feature, a settings reference and troubleshooting.
 
 "Resume in Claude Code" needs the `claude` CLI on your `PATH`, and the Codex equivalent
 needs `codex`.
